@@ -5,6 +5,7 @@ interface BrandLogoProps {
   showText?: boolean;
   showBadge?: boolean;
   isLive?: boolean;
+  isDataLive?: boolean;
   className?: string;
 }
 
@@ -13,6 +14,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   showText = true,
   showBadge = false,
   isLive = true,
+  isDataLive = true,
   className = '',
 }) => {
   const iconSize = size === 'sm' ? 26 : size === 'lg' ? 38 : 30;
@@ -108,18 +110,20 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
           {/* Optional Sleek Live Badge */}
           {showBadge && (
             <span
-              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase flex items-center gap-1.5 transition-all ${
-                isLive
+            className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase flex items-center gap-1.5 transition-all ${
+                !isLive
+                  ? 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                  : isDataLive
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 shadow-[0_0_8px_rgba(16,185,129,0.15)]'
-                  : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/25'
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  isLive ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'
+                  !isLive ? 'bg-zinc-500' : isDataLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'
                 }`}
               />
-              <span>{isLive ? 'LIVE' : 'PAUSED'}</span>
+              <span>{!isLive ? 'PAUSED' : isDataLive ? 'LIVE' : 'SYNCING'}</span>
             </span>
           )}
         </div>
