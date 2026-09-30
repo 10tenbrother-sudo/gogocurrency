@@ -24,8 +24,16 @@ export async function fetchLiveCurrencyStrengthWebData(range: '1d' | '2d' = '1d'
       throw new Error(`Failed to fetch from API: ${res.status}`);
     }
 
-    const payload = await res.json();
-    const dataList: WebCurrencySeries[] = payload.data || payload;
+    const payload = (await res.json()) as { data?: WebCurrencySeries[]; source?: string } | WebCurrencySeries[];
+    const dataList: WebCurrencySeries[] = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload.data)
+      ? payload.data
+      : [];
+    const source: LiveSourceResult['source'] = !Array.isArray(payload) &&
+      ['live', 'cache', 'fallback_cache'].includes(payload.source || '')
+      ? (payload.source as LiveSourceResult['source'])
+      : 'live';
 
     if (!Array.isArray(dataList) || dataList.length === 0) {
       return null;
@@ -69,7 +77,7 @@ export async function fetchLiveCurrencyStrengthWebData(range: '1d' | '2d' = '1d'
     });
 
     return {
-      source: payload.source || 'live',
+      source,
       updatedAt: Date.now(),
       series: seriesMap,
       snapshots,

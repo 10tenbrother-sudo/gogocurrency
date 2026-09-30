@@ -52,7 +52,8 @@ interface FlowMonitorDashboardProps {
 
 type MarketCategoryTab = 'forex' | 'metals' | 'crypto' | 'inst';
 type TradingModeKey = 'scalping' | 'day_trading' | 'swing';
-type DashboardSetupKey = 'default' | 'compact' | 'all' | 'important';
+type MoversView = 'top' | 'all';
+type MoversSort = 'strength' | 'alphabetical';
 
 interface TopMoverRow {
   pair: string;
@@ -161,7 +162,10 @@ export function FlowMonitorDashboard({
   timeframeHistories,
 }: FlowMonitorDashboardProps) {
   // Active Category (FX Forex [28] via Currency Strength, CM Commodities [9], CR Crypto [20], IX Indices [11] via Webhook)
-  const [activeCategory, setActiveCategory] = useState<MarketCategoryTab>('metals');
+  const [activeCategory, setActiveCategory] = useState<MarketCategoryTab>('forex');
+  const [moversView, setMoversView] = useState<MoversView>('top');
+  const [moversSort, setMoversSort] = useState<MoversSort>('strength');
+  const [topMoversLimit, setTopMoversLimit] = useState<5 | 8>(8);
 
   // Internal timeframe state if not provided from parent
   const [localTimeframe, setLocalTimeframe] = useState<TimeframeKey>(activeTimeframe);
@@ -193,10 +197,6 @@ export function FlowMonitorDashboard({
     }
   }, [currentTf]);
 
-  // Dashboard Setup Preset (Default, Compact, All, Important)
-  const [activeSetup, setActiveSetup] = useState<DashboardSetupKey>('default');
-  const [isLayoutUnlocked, setIsLayoutUnlocked] = useState<boolean>(false);
-
   // 5-Minute Candle Clock Counter (synchronized with Forex module)
   const [candleClock, setCandleClock] = useState(() => getNext5MinuteCandleSeconds());
   useEffect(() => {
@@ -208,10 +208,12 @@ export function FlowMonitorDashboard({
 
   // Cloudflare Worker custom URL (persisted in localStorage)
   const [workerUrl, setWorkerUrl] = useState<string>(() => {
-    return localStorage.getItem('flowmonitor_worker_url') || 'https://flowmonitor.aideelyst.workers.dev';
+    return typeof window === 'undefined'
+      ? 'https://flowmonitor.aideelyst.workers.dev'
+      : window.localStorage.getItem('flowmonitor_worker_url') || 'https://flowmonitor.aideelyst.workers.dev';
   });
   const [workerToken, setWorkerToken] = useState<string>(() => {
-    return localStorage.getItem('flowmonitor_worker_token') || '';
+    return typeof window === 'undefined' ? '' : window.localStorage.getItem('flowmonitor_worker_token') || '';
   });
 
   // Modals
@@ -223,7 +225,8 @@ export function FlowMonitorDashboard({
   // Live data states
   const [latestSnapshot, setLatestSnapshot] = useState<FlowSnapshot | null>(null);
   const [, setHistorySnapshots] = useState<FlowSnapshot[]>([]);
-  const [, setDataSource] = useState<string>('initializing');
+  const [dataSource, setDataSource] = useState<string>('initializing');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<number>(Date.now());
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [prevRocMap, setPrevRocMap] = useState<Record<string, number>>({});
@@ -262,6 +265,7 @@ export function FlowMonitorDashboard({
         const snap = latestRes.value.data;
         setLatestSnapshot(snap);
         setDataSource(latestRes.value.source);
+        setLoadError(null);
         setLastSyncTime(Date.now());
 
         // Update streaks for non-forex categories
@@ -293,6 +297,8 @@ export function FlowMonitorDashboard({
           });
           setPrevRocMap(newPrevRoc);
         }
+      } else if (latestRes.status === 'rejected') {
+        setLoadError(latestRes.reason instanceof Error ? latestRes.reason.message : 'Tidak dapat memuat data.');
       }
 
       if (historyRes.status === 'fulfilled' && Array.isArray(historyRes.value.data)) {
@@ -667,24 +673,15 @@ export function FlowMonitorDashboard({
     });
   }, [activeCategory, csMatrix, latestSnapshot, activeModes, prevRocMap]);
 
-  // Sort & Filter top movers based on activeSetup
+  // Keep the full category list in one place; Top Movers is a focused view of it.
   const displayedMovers = useMemo(() => {
     let list = [...topMovers];
-
-    // Priority sort by absolute score
-    list.sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
-
-    if (activeSetup === 'compact') {
-      list = list.slice(0, 4);
-    } else if (activeSetup === 'important') {
-      list = list.filter((m) => Math.abs(m.score) >= 3);
-    } else if (activeSetup === 'default') {
-      // Default: show top 8 movers
-      if (list.length > 8) list = list.slice(0, 8);
-    }
-
+    list.sort((a, b) => moversSort === 'alphabetical'
+      ? a.pair.localeCompare(b.pair)
+      : Math.abs(b.score) - Math.abs(a.score));
+    if (moversView === 'top') list = list.slice(0, topMoversLimit);
     return list;
-  }, [topMovers, activeSetup]);
+  }, [topMovers, moversView, moversSort, topMoversLimit]);
 
   // Summary Metrics: Net Score, Market Balance, Top Move
   const metrics = useMemo(() => {
@@ -742,6 +739,26 @@ export function FlowMonitorDashboard({
     return `${hrs}:${mins} WIB`;
   }, [lastSyncTime]);
 
+  const liveData = dataSource === 'live_worker' || dataSource === 'live';
+  const cachedData = dataSource === 'cache' || dataSource === 'fallback_cache';
+  const webhookData = dataSource === 'webhook_memory';
+  const dataStatusLabel = liveData
+    ? 'Data live'
+    : cachedData
+    ? 'Data tersimpan'
+    : webhookData
+    ? 'Webhook sementara'
+    : isRefreshing
+    ? 'Menghubungkan'
+    : loadError
+    ? 'Data belum tersedia'
+    : 'Menunggu data';
+  const dataStatusTone = liveData
+    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+    : cachedData || webhookData
+    ? 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300'
+    : 'border-slate-300 bg-slate-100 text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400';
+
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 p-4 sm:p-6 lg:p-8 font-sans transition-colors">
       <div className="max-w-7xl mx-auto space-y-5">
@@ -752,7 +769,7 @@ export function FlowMonitorDashboard({
               Flow Monitor
             </h1>
             <p className="text-xs text-slate-400 dark:text-zinc-500 font-medium mt-0.5">
-              Market Regime
+              Pergerakan, disparitas, dan momentum dalam satu tampilan
             </p>
           </div>
 
@@ -773,10 +790,10 @@ export function FlowMonitorDashboard({
               {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
             </button>
 
-            {/* Syncing Status Indicator */}
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs text-slate-600 dark:text-zinc-300 shadow-2xs font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Syncing</span>
+            {/* Tell users whether values are live, cached, or unavailable. */}
+            <div aria-live="polite" title={loadError || dataStatusLabel} className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs shadow-2xs font-medium ${dataStatusTone}`}>
+              <span className={`w-2 h-2 rounded-full ${liveData ? 'bg-emerald-500' : cachedData || webhookData ? 'bg-amber-500' : 'bg-slate-400'} ${isRefreshing ? 'animate-pulse' : ''}`} />
+              <span>{dataStatusLabel}</span>
             </div>
 
             {/* Refresh Button */}
@@ -802,10 +819,10 @@ export function FlowMonitorDashboard({
             {/* Logout / Exit Button */}
             <button
               onClick={onLogout}
-              className="flex items-center gap-1 px-3 py-1 rounded-full border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 text-xs text-slate-600 dark:text-zinc-400 cursor-pointer transition-colors shadow-2xs"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 text-xs text-slate-600 dark:text-zinc-400 cursor-pointer transition-colors shadow-2xs"
             >
-              <LogOut className="w-3 h-3" />
-              <span>Logout</span>
+              <LogOut className="w-3 h-3" aria-hidden="true" />
+              <span>Kembali</span>
             </button>
           </div>
         </header>
@@ -1036,104 +1053,45 @@ export function FlowMonitorDashboard({
           </span>
         </div>
 
-        {/* ── 4. DASHBOARD SETUP Row ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block">
-              DASHBOARD SETUP
-            </span>
-            <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300 mt-0.5">
-              Choose a setup or unlock to customize.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Default Pill */}
-            <button
-              onClick={() => setActiveSetup('default')}
-              className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all ${
-                activeSetup === 'default'
-                  ? 'bg-teal-50 dark:bg-teal-950/50 text-[#0f766e] dark:text-teal-300 border border-[#0f766e]/30'
-                  : 'bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800'
-              }`}
-            >
-              Default
-            </button>
-
-            {/* Compact Pill */}
-            <button
-              onClick={() => setActiveSetup('compact')}
-              className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all ${
-                activeSetup === 'compact'
-                  ? 'bg-teal-50 dark:bg-teal-950/50 text-[#0f766e] dark:text-teal-300 border border-[#0f766e]/30'
-                  : 'bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800'
-              }`}
-            >
-              Compact
-            </button>
-
-            {/* All Pill */}
-            <button
-              onClick={() => setActiveSetup('all')}
-              className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all ${
-                activeSetup === 'all'
-                  ? 'bg-teal-50 dark:bg-teal-950/50 text-[#0f766e] dark:text-teal-300 border border-[#0f766e]/30'
-                  : 'bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800'
-              }`}
-            >
-              All
-            </button>
-
-            {/* Important Pill */}
-            <button
-              onClick={() => setActiveSetup('important')}
-              className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all ${
-                activeSetup === 'important'
-                  ? 'bg-teal-50 dark:bg-teal-950/50 text-[#0f766e] dark:text-teal-300 border border-[#0f766e]/30'
-                  : 'bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800'
-              }`}
-            >
-              Important
-            </button>
-
-            {/* Unlock Layout Button */}
-            <button
-              onClick={() => setIsLayoutUnlocked(!isLayoutUnlocked)}
-              className="px-3 py-1 rounded-full text-xs text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 cursor-pointer transition-colors ml-1"
-            >
-              {isLayoutUnlocked ? 'Lock Layout' : 'Unlock Layout'}
-            </button>
-
-            {/* Reset Button */}
-            <button
-              onClick={() => {
-                setActiveSetup('default');
-                setActiveModes({ scalping: true, day_trading: false, swing: false });
-                setIsLayoutUnlocked(false);
-              }}
-              className="px-3 py-1 rounded-full text-xs text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
-            >
-              Reset
-            </button>
-          </div>
-        </div>
-
-        {/* ── 5. Main Card: Top Movers ── */}
+        {/* ── 5. Unified Movers and Screener ── */}
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl shadow-xs overflow-hidden">
           {/* Card Header */}
-          <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-zinc-800/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-100 dark:border-zinc-800/80">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-[#0f766e] dark:text-teal-400" />
               <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100">
-                Top Movers
+                {moversView === 'top' ? `Top ${topMoversLimit} Movers` : 'Semua Pair & Aset'}
               </h2>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 font-semibold">
-                {activeCategory === 'forex' ? 'CS Engine (28 Pairs)' : 'TradingView Live Feed'}
+                {displayedMovers.length} dari {topMovers.length}
               </span>
             </div>
-            <span className="text-xs font-mono text-slate-400 dark:text-zinc-500">
-              Updated: {formattedUpdateTime}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div role="group" aria-label="Filter daftar instrumen" className="inline-flex rounded-lg border border-slate-200 dark:border-zinc-700 p-0.5">
+                {([{ value: 'top', label: 'Top Movers' }, { value: 'all', label: activeCategory === 'forex' ? 'Semua 28 Pair' : 'Semua Aset' }] as const).map((option) => (
+                  <button key={option.value} type="button" aria-pressed={moversView === option.value} onClick={() => setMoversView(option.value)} className={`min-h-9 px-3 rounded-md text-xs font-semibold transition-colors ${moversView === option.value ? 'bg-[#0f766e] text-white' : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {moversView === 'top' && (
+                <div role="group" aria-label="Jumlah Top Movers" className="inline-flex rounded-lg border border-slate-200 dark:border-zinc-700 p-0.5">
+                  {([5, 8] as const).map((limit) => (
+                    <button key={limit} type="button" aria-pressed={topMoversLimit === limit} onClick={() => setTopMoversLimit(limit)} className={`min-h-9 px-2.5 rounded-md text-xs font-semibold ${topMoversLimit === limit ? 'bg-slate-200 dark:bg-zinc-700 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-zinc-400'}`}>{limit}</button>
+                  ))}
+                </div>
+              )}
+              {moversView === 'all' && (
+                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+                  Urutkan
+                  <select value={moversSort} onChange={(event) => setMoversSort(event.target.value as MoversSort)} className="min-h-9 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 text-xs text-slate-700 dark:text-zinc-200">
+                    <option value="strength">Kekuatan</option>
+                    <option value="alphabetical">A–Z</option>
+                  </select>
+                </label>
+              )}
+              <span className="text-xs font-mono text-slate-400 dark:text-zinc-500">Update {formattedUpdateTime}</span>
+            </div>
           </div>
 
           {/* Expandable Downward Explanation Cards */}

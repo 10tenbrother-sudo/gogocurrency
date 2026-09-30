@@ -44,6 +44,7 @@ interface HeaderProps {
   lastUpdatedTime?: Date | string;
   rankings?: CurrencyStrengthScore[];
   theme?: 'dark' | 'light';
+  isDataLive?: boolean;
   onToggleTheme?: () => void;
 }
 
@@ -68,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
   lastUpdatedTime,
   rankings = [],
   theme = 'dark',
+  isDataLive = false,
   onToggleTheme,
 }) => {
   const isDark = theme === 'dark';
@@ -120,7 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
     >
       <div className="flex items-center justify-between gap-3 max-w-[1700px] mx-auto">
         {/* Left: Brand Emblem & Live Indicator */}
-        <BrandLogo size="md" showText={true} showBadge={true} isLive={isLive} />
+        <BrandLogo size="md" showText={true} showBadge={true} isLive={isLive} isDataLive={isDataLive} />
 
         {/* Center: Global Sentiment Index & Local WIB Clock */}
         <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
@@ -144,7 +146,8 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onManualRefresh}
               disabled={isRefreshing}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-50 ${
+              aria-label="Refresh market data"
+              className={`flex min-h-10 min-w-10 items-center justify-center rounded-md transition-colors cursor-pointer disabled:opacity-50 ${
                 isDark
                   ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
                   : 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100'
@@ -158,7 +161,9 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Live / Pause Button */}
           <button
             onClick={onToggleLive}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors cursor-pointer ${
+            aria-label={isLive ? 'Pause automatic refresh' : 'Resume automatic refresh'}
+            aria-pressed={isLive}
+            className={`flex min-h-10 items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors cursor-pointer ${
               isDark
                 ? isLive
                   ? 'bg-zinc-900 border-white/[0.08] text-zinc-300 hover:text-white'
@@ -178,7 +183,8 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Alert Trigger */}
           <button
             onClick={onOpenAlerts}
-            className={`relative p-1.5 rounded-md transition-colors cursor-pointer ${
+            aria-label={`Alerts${unreadAlertCount > 0 ? `, ${unreadAlertCount} unread` : ''}`}
+            className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-md transition-colors cursor-pointer ${
               isDark
                 ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
                 : 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100'
@@ -197,7 +203,9 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => !isDark || onToggleTheme()}
-                className={`p-1 sm:px-2 sm:py-0.5 rounded flex items-center gap-1 transition-all cursor-pointer ${
+                aria-label="Switch to light theme"
+                aria-pressed={!isDark}
+                className={`min-h-9 min-w-9 p-1 sm:px-2 sm:py-0.5 rounded flex items-center gap-1 transition-all cursor-pointer ${
                   !isDark
                     ? 'bg-white text-slate-900 font-semibold shadow-xs'
                     : 'text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white'
@@ -210,7 +218,9 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => isDark || onToggleTheme()}
-                className={`p-1 sm:px-2 sm:py-0.5 rounded flex items-center gap-1 transition-all cursor-pointer ${
+                aria-label="Switch to dark theme"
+                aria-pressed={isDark}
+                className={`min-h-9 min-w-9 p-1 sm:px-2 sm:py-0.5 rounded flex items-center gap-1 transition-all cursor-pointer ${
                   isDark
                     ? 'bg-zinc-800 text-white font-semibold shadow-xs'
                     : 'text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white'
@@ -227,7 +237,9 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative pl-0.5" ref={settingsMenuRef}>
             <button
               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+              aria-label="Open settings and account menu"
+              aria-expanded={isSettingsOpen}
+              className={`flex min-h-10 min-w-10 items-center justify-center rounded-md transition-colors cursor-pointer ${
                 isDark
                   ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
                   : 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100'
