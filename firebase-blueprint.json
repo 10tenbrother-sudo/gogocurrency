@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "userProfile": {
+      "title": "UserProfile",
+      "description": "User preferences and settings in FlowMonitor",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "User UID matching auth.uid",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address",
+          "maxLength": 256
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name",
+          "maxLength": 128
+        },
+        "preferredTimeframe": {
+          "type": "string",
+          "description": "Default selected timeframe",
+          "enum": ["5M", "10M", "15M", "1H", "2H", "3H", "4H", "6H", "8H", "1D", "1W"]
+        },
+        "soundEnabled": {
+          "type": "boolean",
+          "description": "Whether alert sound is enabled"
+        },
+        "selectedCurrencies": {
+          "type": "array",
+          "description": "Array of currency codes selected for monitoring"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["userId"]
+    },
+    "userAlert": {
+      "title": "UserAlert",
+      "description": "User custom strength alert rule",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Alert document ID",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID",
+          "maxLength": 128
+        },
+        "currency": {
+          "type": "string",
+          "description": "Currency code",
+          "enum": ["USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "NZD"]
+        },
+        "condition": {
+          "type": "string",
+          "description": "Alert trigger condition",
+          "enum": ["ABOVE", "BELOW"]
+        },
+        "threshold": {
+          "type": "number",
+          "description": "Threshold score between 0.0 and 10.0"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether alert is active"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["id", "userId", "currency", "condition", "threshold", "enabled"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "userProfile",
+      "description": "User preferences and workspace profile"
+    },
+    "/alerts/{alertId}": {
+      "schema": "userAlert",
+      "description": "Personalized currency strength alerts"
+    }
+  }
+}

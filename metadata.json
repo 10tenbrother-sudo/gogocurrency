@@ -1,0 +1,6 @@
+{
+  "name": "FlowMonitor - Currency Strength Dashboard",
+  "description": "Real-time interactive currency strength and capital flow monitor inspired by currency-strength.com, featuring multi-timeframe analytics, interactive charts, and pair divergence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

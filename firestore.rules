@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Test connection check
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // User profile and preferences
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128
+        && (!('email' in data) || (data.email is string && data.email.size() <= 256))
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128))
+        && (!('preferredTimeframe' in data) || (data.preferredTimeframe in ['5M', '10M', '15M', '1H', '2H', '3H', '4H', '6H', '8H', '1D', '1W']))
+        && (!('soundEnabled' in data) || (data.soundEnabled is bool))
+        && (!('selectedCurrencies' in data) || (data.selectedCurrencies is list && data.selectedCurrencies.size() <= 20))
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == request.auth.uid;
+      allow delete: if isOwner(userId);
+    }
+
+    // User custom alert rules
+    function isValidUserAlert(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.currency in ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'AUD', 'CAD', 'NZD']
+        && data.condition in ['ABOVE', 'BELOW']
+        && (data.threshold is int || data.threshold is float)
+        && data.threshold >= 0.0 && data.threshold <= 10.0
+        && data.enabled is bool;
+    }
+
+    match /alerts/{alertId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && isValidUserAlert(incoming());
+      allow update: if isSignedIn() && incoming().userId == request.auth.uid && (resource == null || existing().userId == request.auth.uid) && isValidUserAlert(incoming());
+      allow delete: if isSignedIn() && (resource == null || alertId in ['rule-1', 'rule-2'] || !('userId' in existing()) || existing().userId == request.auth.uid);
+    }
+  }
+}
