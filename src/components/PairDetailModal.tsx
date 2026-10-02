@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PairOpportunity } from '../types/forex';
-import { CURRENCIES, formatScore } from '../services/currencyStrengthEngine';
+import { CURRENCIES, getCurrencyConfig, formatScore } from '../services/currencyStrengthEngine';
+import { resolveTradingViewSymbol, SupportedBroker, SUPPORTED_BROKERS } from './TradingViewModal';
 import {
   X,
   TrendingUp,
@@ -10,6 +11,7 @@ import {
   BarChart2,
   ExternalLink,
   RefreshCw,
+  Building2,
 } from 'lucide-react';
 
 interface PairDetailModalProps {
@@ -36,54 +38,32 @@ export const PairDetailModal: React.FC<PairDetailModalProps> = ({
   const isDark = theme === 'dark';
   const [activeTab, setActiveTab] = useState<'chart' | 'stats'>('chart');
   const [chartInterval, setChartInterval] = useState<string>('15');
+  const [broker, setBroker] = useState<SupportedBroker>(() => {
+    try {
+      const saved = localStorage.getItem('flowmonitor_preferred_broker');
+      if (saved && SUPPORTED_BROKERS.some((b) => b.id === saved)) {
+        return saved as SupportedBroker;
+      }
+    } catch {}
+    return 'FOREXCOM';
+  });
   const [widgetKey, setWidgetKey] = useState<number>(0);
-  const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  const cleanPairSymbol = pair ? pair.pair.replace('/', '') : 'EURUSD';
-  const tradingViewSymbol = `FX:${cleanPairSymbol}`;
+  const cleanPairSymbol = pair ? pair.pair.toUpperCase().trim() : 'EUR/USD';
+  const tradingViewSymbol = resolveTradingViewSymbol(cleanPairSymbol, broker);
 
-  // Load TradingView widget
-  useEffect(() => {
-    if (!pair || activeTab !== 'chart' || !chartContainerRef.current) return;
-
-    chartContainerRef.current.innerHTML = '';
-
-    const widgetDiv = document.createElement('div');
-    widgetDiv.className = 'tradingview-widget-container__widget';
-    widgetDiv.style.height = '100%';
-    widgetDiv.style.width = '100%';
-    chartContainerRef.current.appendChild(widgetDiv);
-
-    const script = document.createElement('script');
-    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-    script.type = 'text/javascript';
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      autosize: true,
-      symbol: tradingViewSymbol,
-      interval: chartInterval,
-      timezone: 'Asia/Jakarta',
-      theme: isDark ? 'dark' : 'light',
-      style: '1',
-      locale: 'id',
-      enable_publishing: false,
-      backgroundColor: isDark ? 'rgba(10, 12, 18, 1)' : 'rgba(255, 255, 255, 1)',
-      gridColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
-      hide_top_toolbar: false,
-      hide_legend: false,
-      save_image: false,
-      calendar: false,
-      hide_volume: false,
-      support_host: 'https://www.tradingview.com',
-    });
-
-    chartContainerRef.current.appendChild(script);
-  }, [pair, activeTab, chartInterval, widgetKey, tradingViewSymbol, isDark]);
+  // Construct iframe source URL
+  const iframeSrc = useMemo(() => {
+    const sym = encodeURIComponent(tradingViewSymbol);
+    const thm = isDark ? 'dark' : 'light';
+    const bg = isDark ? '0a0c12' : 'ffffff';
+    return `https://s.tradingview.com/widgetembed/?frameElementId=tradingview_detail_widget&symbol=${sym}&interval=${chartInterval}&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=${bg}&theme=${thm}&style=1&timezone=Asia%2FJakarta&locale=id`;
+  }, [tradingViewSymbol, chartInterval, isDark]);
 
   if (!pair) return null;
 
-  const baseConf = CURRENCIES[pair.base];
-  const quoteConf = CURRENCIES[pair.quote];
+  const baseConf = getCurrencyConfig(pair.base);
+  const quoteConf = getCurrencyConfig(pair.quote);
   const isBuy = pair.divergence > 0;
 
   return (
@@ -105,8 +85,8 @@ export const PairDetailModal: React.FC<PairDetailModalProps> = ({
           {/* Pair Identity & Flags */}
           <div className="flex items-center gap-3">
             <div className="flex items-center -space-x-1 text-lg">
-              <span>{baseConf.flag}</span>
-              <span>{quoteConf.flag}</span>
+              <span>{baseConf?.flag || '🌐'}</span>
+              <span>{quoteConf?.flag || '🌐'}</span>
             </div>
 
             <div>
@@ -126,7 +106,7 @@ export const PairDetailModal: React.FC<PairDetailModalProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-zinc-400 hidden sm:block">
-                {baseConf.name} / {quoteConf.name}
+                {baseConf?.name || pair.base} / {quoteConf?.name || pair.quote}
               </p>
             </div>
 
@@ -261,12 +241,14 @@ export const PairDetailModal: React.FC<PairDetailModalProps> = ({
         {/* Modal Body */}
         <div className="flex-1 overflow-hidden relative bg-white dark:bg-[#0A0C12]">
           {activeTab === 'chart' ? (
-            /* Live TradingView Widget Container */
+            /* Live TradingView Iframe */
             <div className="w-full h-full relative">
-              <div
-                ref={chartContainerRef}
-                className="tradingview-widget-container w-full h-full"
-                style={{ minHeight: '380px' }}
+              <iframe
+                key={`${tradingViewSymbol}-${chartInterval}-${isDark ? 'dark' : 'light'}-${widgetKey}`}
+                src={iframeSrc}
+                title={`TradingView Chart ${tradingViewSymbol}`}
+                className="w-full h-full border-0 absolute inset-0"
+                allow="fullscreen"
               />
             </div>
           ) : (
@@ -277,7 +259,7 @@ export const PairDetailModal: React.FC<PairDetailModalProps> = ({
                 <div className="p-4 bg-[#11141D] border border-white/[0.08] rounded-xl space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">{baseConf.flag}</span>
+                      <span className="text-xl">{baseConf?.flag || '🌐'}</span>
                       <span className="font-semibold text-white text-sm">{pair.base}</span>
                       <span className="text-[10px] text-zinc-500 font-mono">(Base)</span>
                     </div>
@@ -296,7 +278,7 @@ export const PairDetailModal: React.FC<PairDetailModalProps> = ({
                 <div className="p-4 bg-[#11141D] border border-white/[0.08] rounded-xl space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">{quoteConf.flag}</span>
+                      <span className="text-xl">{quoteConf?.flag || '🌐'}</span>
                       <span className="font-semibold text-white text-sm">{pair.quote}</span>
                       <span className="text-[10px] text-zinc-500 font-mono">(Quote)</span>
                     </div>

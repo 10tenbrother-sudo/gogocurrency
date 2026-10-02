@@ -185,8 +185,8 @@ export const PairOpportunities: React.FC<PairOpportunitiesProps> = ({
                   <td className="py-2.5 px-3 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <div className="flex items-center text-sm -space-x-1">
-                        <span>{baseConf.flag}</span>
-                        <span>{quoteConf.flag}</span>
+                        <span>{baseConf?.flag || '🌐'}</span>
+                        <span>{quoteConf?.flag || '🌐'}</span>
                       </div>
                       <span className="font-semibold text-slate-800 dark:text-zinc-200 group-hover:text-slate-950 dark:group-hover:text-white font-sans">
                         {opp.pair}

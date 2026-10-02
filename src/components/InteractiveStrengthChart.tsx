@@ -7,6 +7,7 @@ import {
 import {
   CURRENCIES,
   CURRENCY_CODES,
+  getCurrencyConfig,
   formatScore,
 } from '../services/currencyStrengthEngine';
 import {
@@ -497,7 +498,7 @@ export const InteractiveStrengthChart: React.FC<InteractiveStrengthChartProps> =
               <path
                 d={generatePath(focusedCurrency)}
                 fill="none"
-                stroke={CURRENCIES[focusedCurrency].color}
+                stroke={CURRENCIES[focusedCurrency]?.color || getCurrencyConfig(focusedCurrency).color}
                 strokeWidth="4"
                 strokeOpacity="1"
                 strokeLinecap="round"
@@ -583,7 +584,7 @@ export const InteractiveStrengthChart: React.FC<InteractiveStrengthChartProps> =
           <div className="py-6 px-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 items-end h-[360px]">
               {CURRENCY_CODES.map((code) => {
-                const conf = CURRENCIES[code];
+                const conf = CURRENCIES[code] || getCurrencyConfig(code);
                 const score = latestPoint?.scores[code] ?? 5.0;
                 const heightPct = Math.max(5, (score / 10) * 100);
 
@@ -595,7 +596,7 @@ export const InteractiveStrengthChart: React.FC<InteractiveStrengthChartProps> =
                   >
                     <span
                       className="text-xs font-bold font-mono mb-2"
-                      style={{ color: conf.color }}
+                      style={{ color: conf?.color || '#0ea5e9' }}
                     >
                       {formatScore(score)}
                     </span>
@@ -604,13 +605,13 @@ export const InteractiveStrengthChart: React.FC<InteractiveStrengthChartProps> =
                         className="w-full rounded-t-lg transition-all duration-300 group-hover:brightness-110"
                         style={{
                           height: `${heightPct}%`,
-                          backgroundColor: conf.color,
+                          backgroundColor: conf?.color || '#0ea5e9',
                         }}
                       />
                     </div>
                     <div className="mt-2 text-center">
-                      <span className="text-base">{conf.flag}</span>
-                      <span className="block font-bold text-xs mt-0.5" style={{ color: conf.color }}>
+                      <span className="text-base">{conf?.flag || '🌐'}</span>
+                      <span className="block font-bold text-xs mt-0.5" style={{ color: conf?.color || '#0ea5e9' }}>
                         {code}
                       </span>
                     </div>

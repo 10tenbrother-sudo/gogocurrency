@@ -4,7 +4,7 @@ import {
   AlertEvent,
   CurrencyCode,
 } from '../types/forex';
-import { CURRENCIES, CURRENCY_CODES, playAlertChime } from '../services/currencyStrengthEngine';
+import { CURRENCIES, CURRENCY_CODES, getCurrencyConfig, playAlertChime } from '../services/currencyStrengthEngine';
 import {
   X,
   Bell,
@@ -100,7 +100,7 @@ export const AlertsDrawer: React.FC<AlertsDrawerProps> = ({
                   >
                     {CURRENCY_CODES.map((c) => (
                       <option key={c} value={c}>
-                        {CURRENCIES[c].flag} {c}
+                        {CURRENCIES[c]?.flag || '🌐'} {c}
                       </option>
                     ))}
                   </select>
@@ -166,14 +166,14 @@ export const AlertsDrawer: React.FC<AlertsDrawerProps> = ({
             ) : (
               <div className="space-y-2">
                 {rules.map((rule) => {
-                  const conf = CURRENCIES[rule.currency];
+                  const conf = CURRENCIES[rule.currency] || getCurrencyConfig(rule.currency);
                   return (
                     <div
                       key={rule.id}
                       className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-base">{conf.flag}</span>
+                        <span className="text-base">{conf?.flag || '🌐'}</span>
                         <span className="font-bold text-slate-900 dark:text-white">{rule.currency}</span>
                         <span className="text-slate-500 dark:text-slate-400">
                           {rule.condition === 'ABOVE' ? '≥' : '≤'} {rule.threshold.toFixed(1)}

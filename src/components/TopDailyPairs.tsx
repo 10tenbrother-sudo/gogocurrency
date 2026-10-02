@@ -314,8 +314,8 @@ export const TopDailyPairs: React.FC<TopDailyPairsProps> = ({
 
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <div className="flex items-center text-sm -space-x-1 opacity-90">
-                      <span>{baseConf.flag}</span>
-                      <span>{quoteConf.flag}</span>
+                      <span>{baseConf?.flag || '🌐'}</span>
+                      <span>{quoteConf?.flag || '🌐'}</span>
                     </div>
                     <span className={`text-sm sm:text-base font-semibold tracking-tight ${isDark ? 'text-white' : 'text-zinc-950'}`}>
                       {item.pair}

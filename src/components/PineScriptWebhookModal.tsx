@@ -16,6 +16,8 @@ import {
   Cpu,
   Layers,
 } from 'lucide-react';
+import { FLOW_MONITOR_PINE_SCRIPT } from '../data/flowMonitorPineScript';
+import { FLOW_MONITOR_WORKER_SCRIPT } from '../data/flowMonitorWorkerScript';
 
 interface PineScriptWebhookModalProps {
   isOpen: boolean;
@@ -40,446 +42,9 @@ export const PineScriptWebhookModal: React.FC<PineScriptWebhookModalProps> = ({
 
   if (!isOpen) return null;
 
-  const PINE_SCRIPT_CODE = `//@version=6
-// ══════════════════════════════════════════════════════════════════════════════
-// Indicator: Arah Market & Flow Monitor — TV Edge Sync (Indeks, Komoditas & Crypto)
-// Focus: Khusus Data Indeks Ekuitas & Makro, Komoditas/Energi/Logam, dan Top Crypto
-// Catatan: Forex tidak disertakan karena sudah menggunakan modul Currency Strength
-// Total Aset: Tepat 40 Prime Assets (Aman 100% dari limit TradingView max 40 request calls)
-// ══════════════════════════════════════════════════════════════════════════════
+  const PINE_SCRIPT_CODE = FLOW_MONITOR_PINE_SCRIPT;
 
-indicator("Arah Market & Flow Monitor — Macro, Commodity & Crypto (40 Prime)", shorttitle="FlowMonitor Macro/Comm/Crypto", overlay = false, max_bars_back = 500)
-
-// ── 1. INPUTS & CONFIGURATIONS ──
-grp_feed     = "── Category Feeds & Webhook Dispatch ──"
-send_macro   = input.bool(true, "Kirim Indeks Ekuitas & Makro (11 Aset)", group = grp_feed)
-send_metals  = input.bool(true, "Kirim Komoditas, Logam & Energi (9 Aset)", group = grp_feed)
-send_crypto1 = input.bool(true, "Kirim Crypto Tier 1 (10 Koin Teratas)", group = grp_feed)
-send_crypto2 = input.bool(true, "Kirim Crypto Tier 2 & AI/High Beta (10 Koin)", group = grp_feed)
-
-grp_alert    = "── Alert Trigger Mode ──"
-trigger_mode = input.string("Once Per Bar Close", "Webhook Frequency", options = ["Once Per Bar Close", "Realtime / Every Tick"], group = grp_alert)
-show_hud     = input.bool(true, "Tampilkan Tabel On-Chart HUD Summary", group = grp_alert)
-
-// ── 2. DATA EXTRACTION FUNCTION (PRICE + ROC + EMA20) ──
-f_data(sym) =>
-    [c, o, h, l, v, c1, ema20] = request.security(sym, timeframe.period, [close, open, high, low, volume, close[1], ta.ema(close, 20)], barmerge.gaps_off, barmerge.lookahead_off)
-    chg = c1 != 0 ? math.round(((c - c1) / c1) * 10000) / 100 : 0.0
-    [c, o, h, l, v, chg, ema20]
-
-f_item(pair, src, c, o, h, l, v, chg, ema20) =>
-    '{"p":"' + pair + '","c":' + str.tostring(c) + ',"o":' + str.tostring(o) + ',"h":' + str.tostring(h) + ',"l":' + str.tostring(l) + ',"v":' + str.tostring(v) + ',"chg":' + str.tostring(chg, "#.##") + ',"ema20":' + str.tostring(ema20, "#.####") + ',"src":"' + src + '"}'
-
-// ── 3. FETCH 40 PRIME ASSETS (11 INDEKS + 9 KOMODITAS + 20 CRYPTO = 40 CALLS) ──
-
-// --- A. INDEKS EKUITAS GLOBAL & BENCHMARK MAKRO (11 Aset) ---
-[spxC,   spxO,   spxH,   spxL,   spxV,   spxChg,   spxEma]   = f_data("OANDA:SPX500USD")  // US500 S&P 500
-[nsxC,   nsxO,   nsxH,   nsxL,   nsxV,   nsxChg,   nsxEma]   = f_data("OANDA:NAS100USD")  // US100 Nasdaq
-[djiC,   djiO,   djiH,   djiL,   djiV,   djiChg,   djiEma]   = f_data("OANDA:US30USD")    // US30 Dow Jones
-[rutC,   rutO,   rutH,   rutL,   rutV,   rutChg,   rutEma]   = f_data("OANDA:US2000USD")  // US2000 Russell 2000
-[daxC,   daxO,   daxH,   daxL,   daxV,   daxChg,   daxEma]   = f_data("OANDA:DE40EUR")    // GER40 DAX Germany
-[ftseC,  ftseO,  ftseH,  ftseL,  ftseV,  ftseChg,  ftseEma]  = f_data("OANDA:UK100GBP")   // UK100 FTSE London
-[n225C,  n225O,  n225H,  n225L,  n225V,  n225Chg,  n225Ema]  = f_data("OANDA:JP225USD")   // JP225 Nikkei Tokyo
-[hsiC,   hsiO,   hsiH,   hsiL,   hsiV,   hsiChg,   hsiEma]   = f_data("OANDA:HK33HKD")    // HK33 Hang Seng
-[dxyC,   dxyO,   dxyH,   dxyL,   dxyV,   dxyChg,   dxyEma]   = f_data("TVC:DXY")          // DXY Dollar Index
-[us10yC, us10yO, us10yH, us10yL, us10yV, us10yChg, us10yEma] = f_data("TVC:US10Y")        // US10Y 10Y Yield
-[vixC,   vixO,   vixH,   vixL,   vixV,   vixChg,   vixEma]   = f_data("TVC:VIX")          // VIX Market Fear Index
-
-// --- B. KOMODITAS, LOGAM MULIA & ENERGI (9 Aset) ---
-[xauC, xauO, xauH, xauL, xauV, xauChg, xauEma] = f_data("OANDA:XAUUSD") // Emas / Gold
-[xagC, xagO, xagH, xagL, xagV, xagChg, xagEma] = f_data("OANDA:XAGUSD") // Perak / Silver
-[xptC, xptO, xptH, xptL, xptV, xptChg, xptEma] = f_data("OANDA:XPTUSD") // Platinum
-[copC, copO, copH, copL, copV, copChg, copEma] = f_data("TVC:COPPER")    // Tembaga / High Grade Copper
-[oilC, oilO, oilH, oilL, oilV, oilChg, oilEma] = f_data("TVC:USOIL")     // Minyak WTI Crude
-[bcoC, bcoO, bcoH, bcoL, bcoV, bcoChg, bcoEma] = f_data("TVC:UKOIL")     // Minyak Brent Crude
-[gasC, gasO, gasH, gasL, gasV, gasChg, gasEma] = f_data("TVC:NATGAS")    // Gas Alam Henry Hub
-[aliC, aliO, aliH, aliL, aliV, aliChg, aliEma] = f_data("TVC:ALUMINUM")  // Logam Aluminium
-[whtC, whtO, whtH, whtL, whtV, whtChg, whtEma] = f_data("TVC:WHEAT")     // Gandum US Wheat
-
-// --- C. TOP CRYPTOCURRENCIES TIER 1 (10 Koin Teratas) ---
-[btcC,  btcO,  btcH,  btcL,  btcV,  btcChg,  btcEma]  = f_data("BINANCE:BTCUSDT")
-[ethC,  ethO,  ethH,  ethL,  ethV,  ethChg,  ethEma]  = f_data("BINANCE:ETHUSDT")
-[solC,  solO,  solH,  solL,  solV,  solChg,  solEma]  = f_data("BINANCE:SOLUSDT")
-[bnbC,  bnbO,  bnbH,  bnbL,  bnbV,  bnbChg,  bnbEma]  = f_data("BINANCE:BNBUSDT")
-[xrpC,  xrpO,  xrpH,  xrpL,  xrpV,  xrpChg,  xrpEma]  = f_data("BINANCE:XRPUSDT")
-[dogeC, dogeO, dogeH, dogeL, dogeV, dogeChg, dogeEma] = f_data("BINANCE:DOGEUSDT")
-[adaC,  adaO,  adaH,  adaL,  adaV,  adaChg,  adaEma]  = f_data("BINANCE:ADAUSDT")
-[avaxC, avaxO, avaxH, avaxL, avaxV, avaxChg, avaxEma] = f_data("BINANCE:AVAXUSDT")
-[suiC,  suiO,  suiH,  suiL,  suiV,  suiChg,  suiEma]  = f_data("BINANCE:SUIUSDT")
-[linkC, linkO, linkH, linkL, linkV, linkChg, linkEma] = f_data("BINANCE:LINKUSDT")
-
-// --- D. TOP CRYPTOCURRENCIES TIER 2 & AI / ECOSYSTEM (10 Koin) ---
-[nearC, nearO, nearH, nearL, nearV, nearChg, nearEma] = f_data("BINANCE:NEARUSDT")
-[aptC,  aptO,  aptH,  aptL,  aptV,  aptChg,  aptEma]  = f_data("BINANCE:APTUSDT")
-[pepeC, pepeO, pepeH, pepeL, pepeV, pepeChg, pepeEma] = f_data("BINANCE:PEPEUSDT")
-[ltcC,  ltcO,  ltcH,  ltcL,  ltcV,  ltcChg,  ltcEma]  = f_data("BINANCE:LTCUSDT")
-[dotC,  dotO,  dotH,  dotL,  dotV,  dotChg,  dotEma]  = f_data("BINANCE:DOTUSDT")
-[rndrC, rndrO, rndrH, rndrL, rndrV, rndrChg, rndrEma] = f_data("BINANCE:RENDERUSDT")
-[fetC,  fetO,  fetH,  fetL,  fetV,  fetChg,  fetEma]  = f_data("BINANCE:FETUSDT")
-[injC,  injO,  injH,  injL,  injV,  injChg,  injEma]  = f_data("BINANCE:INJUSDT")
-[shibC, shibO, shibH, shibL, shibV, shibChg, shibEma] = f_data("BINANCE:SHIBUSDT")
-[taoC,  taoO,  taoH,  taoL,  taoV,  taoChg,  taoEma]  = f_data("BINANCE:TAOUSDT")
-
-tf = timeframe.period
-
-// ── 4. PAYLOADS BUILDER (STRUCTURED JSON CHUNKS) ──
-
-// 1. Indeks Ekuitas & Makro (11 Aset)
-macroPayload = '{"t":' + str.tostring(time) + ',"tf":"' + tf + '","cat":"macro","data":[' +
-     f_item("US500",  "OANDA:SPX500USD",  spxC,   spxO,   spxH,   spxL,   spxV,   spxChg,   spxEma)   + ',' +
-     f_item("US100",  "OANDA:NAS100USD",  nsxC,   nsxO,   nsxH,   nsxL,   nsxV,   nsxChg,   nsxEma)   + ',' +
-     f_item("US30",   "OANDA:US30USD",    djiC,   djiO,   djiH,   djiL,   djiV,   djiChg,   djiEma)   + ',' +
-     f_item("US2000", "OANDA:US2000USD",  rutC,   rutO,   rutH,   rutL,   rutV,   rutChg,   rutEma)   + ',' +
-     f_item("GER40",  "OANDA:DE40EUR",    daxC,   daxO,   daxH,   daxL,   daxV,   daxChg,   daxEma)   + ',' +
-     f_item("UK100",  "OANDA:UK100GBP",   ftseC,  ftseO,  ftseH,  ftseL,  ftseV,  ftseChg,  ftseEma)  + ',' +
-     f_item("JP225",  "OANDA:JP225USD",   n225C,  n225O,  n225H,  n225L,  n225V,  n225Chg,  n225Ema)  + ',' +
-     f_item("HK33",   "OANDA:HK33HKD",    hsiC,   hsiO,   hsiH,   hsiL,   hsiV,   hsiChg,   hsiEma)   + ',' +
-     f_item("DXY",    "TVC:DXY",          dxyC,   dxyO,   dxyH,   dxyL,   dxyV,   dxyChg,   dxyEma)   + ',' +
-     f_item("US10Y",  "TVC:US10Y",        us10yC, us10yO, us10yH, us10yL, us10yV, us10yChg, us10yEma) + ',' +
-     f_item("VIX",    "TVC:VIX",          vixC,   vixO,   vixH,   vixL,   vixV,   vixChg,   vixEma)   +
-     ']}'
-
-// 2. Komoditas, Logam Mulia & Energi (9 Aset)
-metalsPayload = '{"t":' + str.tostring(time) + ',"tf":"' + tf + '","cat":"metals","data":[' +
-     f_item("XAUUSD",   "OANDA:XAUUSD",   xauC, xauO, xauH, xauL, xauV, xauChg, xauEma) + ',' +
-     f_item("XAGUSD",   "OANDA:XAGUSD",   xagC, xagO, xagH, xagL, xagV, xagChg, xagEma) + ',' +
-     f_item("XPTUSD",   "OANDA:XPTUSD",   xptC, xptO, xptH, xptL, xptV, xptChg, xptEma) + ',' +
-     f_item("COPPER",   "TVC:COPPER",     copC, copO, copH, copL, copV, copChg, copEma) + ',' +
-     f_item("USOIL",    "TVC:USOIL",      oilC, oilO, oilH, oilL, oilV, oilChg, oilEma) + ',' +
-     f_item("UKOIL",    "TVC:UKOIL",      bcoC, bcoO, bcoH, bcoL, bcoV, bcoChg, bcoEma) + ',' +
-     f_item("NATGAS",   "TVC:NATGAS",     gasC, gasO, gasH, gasL, gasV, gasChg, gasEma) + ',' +
-     f_item("ALUMINUM", "TVC:ALUMINUM",   aliC, aliO, aliH, aliL, aliV, aliChg, aliEma) + ',' +
-     f_item("WHEAT",    "TVC:WHEAT",      whtC, whtO, whtH, whtL, whtV, whtChg, whtEma) +
-     ']}'
-
-// 3. Crypto Tier 1 (10 Koin)
-crypto1Payload = '{"t":' + str.tostring(time) + ',"tf":"' + tf + '","cat":"crypto","data":[' +
-     f_item("BTC",  "BINANCE:BTCUSDT",  btcC,  btcO,  btcH,  btcL,  btcV,  btcChg,  btcEma)  + ',' +
-     f_item("ETH",  "BINANCE:ETHUSDT",  ethC,  ethO,  ethH,  ethL,  ethV,  ethChg,  ethEma)  + ',' +
-     f_item("SOL",  "BINANCE:SOLUSDT",  solC,  solO,  solH,  solL,  solV,  solChg,  solEma)  + ',' +
-     f_item("BNB",  "BINANCE:BNBUSDT",  bnbC,  bnbO,  bnbH,  bnbL,  bnbV,  bnbChg,  bnbEma)  + ',' +
-     f_item("XRP",  "BINANCE:XRPUSDT",  xrpC,  xrpO,  xrpH,  xrpL,  xrpV,  xrpChg,  xrpEma)  + ',' +
-     f_item("DOGE", "BINANCE:DOGEUSDT", dogeC, dogeO, dogeH, dogeL, dogeV, dogeChg, dogeEma) + ',' +
-     f_item("ADA",  "BINANCE:ADAUSDT",  adaC,  adaO,  adaH,  adaL,  adaV,  adaChg,  adaEma)  + ',' +
-     f_item("AVAX", "BINANCE:AVAXUSDT", avaxC, avaxO, avaxH, avaxL, avaxV, avaxChg, avaxEma) + ',' +
-     f_item("SUI",  "BINANCE:SUIUSDT",  suiC,  suiO,  suiH,  suiL,  suiV,  suiChg,  suiEma)  + ',' +
-     f_item("LINK", "BINANCE:LINKUSDT", linkC, linkO, linkH, linkL, linkV, linkChg, linkEma) +
-     ']}'
-
-// 4. Crypto Tier 2 & AI / High Beta (10 Koin)
-crypto2Payload = '{"t":' + str.tostring(time) + ',"tf":"' + tf + '","cat":"crypto","data":[' +
-     f_item("NEAR",   "BINANCE:NEARUSDT",   nearC, nearO, nearH, nearL, nearV, nearChg, nearEma) + ',' +
-     f_item("APT",    "BINANCE:APTUSDT",    aptC,  aptO,  aptH,  aptL,  aptV,  aptChg,  aptEma)  + ',' +
-     f_item("PEPE",   "BINANCE:PEPEUSDT",   pepeC, pepeO, pepeH, pepeL, pepeV, pepeChg, pepeEma) + ',' +
-     f_item("LTC",    "BINANCE:LTCUSDT",    ltcC,  ltcO,  ltcH,  ltcL,  ltcV,  ltcChg,  ltcEma)  + ',' +
-     f_item("DOT",    "BINANCE:DOTUSDT",    dotC,  dotO,  dotH,  dotL,  dotV,  dotChg,  dotEma)  + ',' +
-     f_item("RENDER", "BINANCE:RENDERUSDT", rndrC, rndrO, rndrH, rndrL, rndrV, rndrChg, rndrEma) + ',' +
-     f_item("FET",    "BINANCE:FETUSDT",    fetC,  fetO,  fetH,  fetL,  fetV,  fetChg,  fetEma)  + ',' +
-     f_item("INJ",    "BINANCE:INJUSDT",    injC,  injO,  injH,  injL,  injV,  injChg,  injEma)  + ',' +
-     f_item("SHIB",   "BINANCE:SHIBUSDT",   shibC, shibO, shibH, shibL, shibV, shibChg, shibEma) + ',' +
-     f_item("TAO",    "BINANCE:TAOUSDT",    taoC,  taoO,  taoH,  taoL,  taoV,  taoChg,  taoEma)  +
-     ']}'
-
-// ── 5. WEBHOOK ALERTS DISPATCH ──
-is_ready = trigger_mode == "Once Per Bar Close" ? barstate.isconfirmed : barstate.isrealtime
-
-if is_ready
-    if send_macro
-        alert(macroPayload, alert.freq_once_per_bar)
-    if send_metals
-        alert(metalsPayload, alert.freq_once_per_bar)
-    if send_crypto1
-        alert(crypto1Payload, alert.freq_once_per_bar)
-    if send_crypto2
-        alert(crypto2Payload, alert.freq_once_per_bar)
-
-// ── 6. VISUAL ON-CHART HUD DASHBOARD ──
-var table t = table.new(position.bottom_left, 4, 6, bgcolor = color.new(color.black, 20), border_color = color.new(color.gray, 60), border_width = 1)
-if show_hud and barstate.islast
-    table.cell(t, 0, 0, "FLOW MONITOR",   bgcolor = color.new(color.blue, 30), text_color = color.white, text_size = size.small)
-    table.cell(t, 1, 0, "CRYPTO TOP",     bgcolor = color.new(#f59e0b, 30),   text_color = color.white, text_size = size.small)
-    table.cell(t, 2, 0, "KOMODITAS/OIL",  bgcolor = color.new(#10b981, 30),   text_color = color.white, text_size = size.small)
-    table.cell(t, 3, 0, "INDEKS & MAKRO", bgcolor = color.new(#8b5cf6, 30),   text_color = color.white, text_size = size.small)
-
-    table.cell(t, 0, 1, "TF: " + tf, text_color = color.gray, text_size = size.small)
-    table.cell(t, 1, 1, "BTC: " + str.tostring(btcChg, "#.##") + "%", bgcolor = btcChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 2, 1, "Gold: " + str.tostring(xauChg, "#.##") + "%", bgcolor = xauChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 3, 1, "US500: " + str.tostring(spxChg, "#.##") + "%", bgcolor = spxChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-
-    table.cell(t, 0, 2, "Status: Active", text_color = color.green, text_size = size.small)
-    table.cell(t, 1, 2, "ETH: " + str.tostring(ethChg, "#.##") + "%", bgcolor = ethChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 2, 2, "Silver: " + str.tostring(xagChg, "#.##") + "%", bgcolor = xagChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 3, 2, "US100: " + str.tostring(nsxChg, "#.##") + "%", bgcolor = nsxChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-
-    table.cell(t, 0, 3, "Mode: Prime 40", text_color = color.yellow, text_size = size.small)
-    table.cell(t, 1, 3, "SOL: " + str.tostring(solChg, "#.##") + "%", bgcolor = solChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 2, 3, "USOIL: " + str.tostring(oilChg, "#.##") + "%", bgcolor = oilChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 3, 3, "US30: " + str.tostring(djiChg, "#.##") + "%", bgcolor = djiChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-
-    table.cell(t, 0, 4, "Sync: Safe ≤40", text_color = color.cyan, text_size = size.small)
-    table.cell(t, 1, 4, "BNB: " + str.tostring(bnbChg, "#.##") + "%", bgcolor = bnbChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 2, 4, "Copper: " + str.tostring(copChg, "#.##") + "%", bgcolor = copChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 3, 4, "DXY: " + str.tostring(dxyChg, "#.##") + "%", bgcolor = dxyChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-
-    table.cell(t, 0, 5, "FX: via CS Modul", text_color = color.gray, text_size = size.small)
-    table.cell(t, 1, 5, "SUI: " + str.tostring(suiChg, "#.##") + "%", bgcolor = suiChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 2, 5, "NATGAS: " + str.tostring(gasChg, "#.##") + "%", bgcolor = gasChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
-    table.cell(t, 3, 5, "US10Y: " + str.tostring(us10yChg, "#.##") + "%", bgcolor = us10yChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)`;
-
-  const WORKER_SCRIPT_CODE = `// ══════════════════════════════════════════════════════════════════════════════
-// Flow Monitor - Cloudflare Worker Webhook & Real-Time Aggregator
-// Handles: TradingView Pine Script v6 Webhooks (Crypto, Metals & Indices)
-// Endpoints:
-//   POST /fm?key=YOUR_KEY   — Ingests alert payload from TradingView
-//   GET  /latest            — Returns latest multi-asset flow snapshot
-//   GET  /history           — Returns historical snapshots (last 50)
-//   GET  /streaks           — Returns active streak counters
-//   GET  /health            — Status check & uptime
-// ══════════════════════════════════════════════════════════════════════════════
-
-let memoryLatest = null;
-let memoryHistory = [];
-let memoryStreaks = {};
-
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key",
-  };
-}
-
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      ...corsHeaders(),
-    },
-  });
-}
-
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders() });
-    }
-
-    if (url.pathname === "/health" || url.pathname === "/ping") {
-      return jsonResponse({
-        status: "ok",
-        timestamp: new Date().toISOString(),
-        hasKV: !!env.FM,
-        hasTelegram: !!(env.TG_TOKEN && env.TG_CHAT),
-      });
-    }
-
-    // ── POST /fm or POST /webhook: Ingest Pine Script Webhook ──
-    if (request.method === "POST" && (url.pathname === "/fm" || url.pathname === "/webhook" || url.pathname === "/")) {
-      const authKey = url.searchParams.get("key") || request.headers.get("x-api-key");
-      if (env.API_KEY && authKey !== env.API_KEY) {
-        return jsonResponse({ error: "Unauthorized: Invalid API key" }, 401);
-      }
-
-      try {
-        const body = await request.json();
-        const now = Date.now();
-        const timeStr = body.time || new Date(now).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-
-        let snapshot = memoryLatest
-          ? JSON.parse(JSON.stringify(memoryLatest))
-          : {
-              time: timeStr,
-              mode: body.mode || body.tf ? \`\${body.tf}m\` : "1H Intraday",
-              timestamp: now,
-              source: "tradingview_pine_webhook",
-              crypto: [],
-              metals: [],
-              inst: [],
-              forex: [],
-              context: {},
-            };
-
-        snapshot.time = timeStr;
-        snapshot.timestamp = now;
-
-        // Pine Script v6 'data' array
-        if (Array.isArray(body.data)) {
-          const CRYPTO_SYMS = new Set([
-            "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "SUI", "LINK",
-            "NEAR", "APT", "PEPE", "LTC", "DOT", "RENDER", "FET", "INJ", "SHIB", "TAO"
-          ]);
-          const METALS_SYMS = new Set([
-            "XAUUSD", "XAGUSD", "XPTUSD", "COPPER", "USOIL", "UKOIL", "NATGAS", "ALUMINUM", "WHEAT",
-            "GOLD", "SILVER", "NGAS"
-          ]);
-          const INST_SYMS = new Set([
-            "US500", "US100", "US30", "US2000", "GER40", "UK100", "JP225", "HK33",
-            "SPX", "NDX", "DJI", "DXY", "US10Y", "VIX", "DE40"
-          ]);
-
-          body.data.forEach((item) => {
-            const pair = item.p || item.pair || item.c || item.name || "UNKNOWN";
-            const pct = typeof item.chg === "number" ? item.chg : typeof item.pct === "number" ? item.pct : typeof item.r === "number" ? item.r : 0;
-            const dir = item.dir || (pct >= 0 ? "LONG" : "SHORT");
-            const entry = {
-              pair,
-              pct,
-              dir,
-              price: item.c,
-              open: item.o,
-              high: item.h,
-              low: item.l,
-              vol: item.v,
-              ema20: item.ema20,
-              src: item.src,
-            };
-
-            const upsert = (list) => {
-              const idx = list.findIndex((x) => x.pair === pair);
-              if (idx >= 0) list[idx] = entry;
-              else list.push(entry);
-            };
-
-            if (body.cat === "crypto" || CRYPTO_SYMS.has(pair)) {
-              upsert(snapshot.crypto);
-            } else if (body.cat === "metals" || body.cat === "commodities" || METALS_SYMS.has(pair)) {
-              upsert(snapshot.metals);
-            } else if (body.cat === "macro" || body.cat === "inst" || body.cat === "indices" || INST_SYMS.has(pair)) {
-              upsert(snapshot.inst);
-            } else {
-              upsert(snapshot.forex);
-            }
-
-            if (!snapshot.context) snapshot.context = {};
-            if (pair === "US10Y")  snapshot.context.US10Y  = pct;
-            if (pair === "DXY")    snapshot.context.DXY    = pct;
-            if (pair === "VIX")    snapshot.context.VIX    = pct;
-            if (pair === "US500")  snapshot.context.US500  = pct;
-            if (pair === "XAUUSD") snapshot.context.GOLD   = pct;
-            if (pair === "USOIL")  snapshot.context.USOIL  = pct;
-            if (pair === "AUDNZD") snapshot.context.AUDNZD = pct;
-            if (pair === "CHFJPY") snapshot.context.CHFJPY = pct;
-            if (pair === "EURGBP") snapshot.context.EURGBP = pct;
-            if (pair === "USDCAD") snapshot.context.USDCAD = pct;
-          });
-        }
-
-        const normalizeList = (list) => {
-          if (!Array.isArray(list)) return [];
-          return list.map((item) => {
-            const pair = item.pair || item.p || item.c || item.name || "UNKNOWN";
-            const pct = typeof item.pct === "number" ? item.pct : typeof item.chg === "number" ? item.chg : typeof item.r === "number" ? item.r : 0;
-            const dir = item.dir || (pct >= 0 ? "LONG" : "SHORT");
-            return { pair, pct, dir, price: item.c || item.price };
-          });
-        };
-
-        if (body.crypto || body.coins) snapshot.crypto = normalizeList(body.crypto || body.coins);
-        if (body.metals || body.items) snapshot.metals = normalizeList(body.metals || body.items);
-        if (body.inst   || body.indices) snapshot.inst = normalizeList(body.inst || body.indices);
-        if (body.forex  || body.pairs)  snapshot.forex = normalizeList(body.forex || body.pairs);
-        if (body.context && typeof body.context === "object") snapshot.context = { ...snapshot.context, ...body.context };
-
-        // Update Streaks
-        const threshold = parseInt(env.STREAK_TH || "5", 10);
-        const hotAlerts = [];
-        const checkCategoryStreaks = (categoryName, list) => {
-          if (!Array.isArray(list) || list.length === 0) return;
-          const sorted = [...list].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
-          const topNames = sorted.slice(0, 5).map((x) => x.pair);
-          const allKnown = new Set([...Object.keys(memoryStreaks), ...topNames]);
-
-          for (const item of allKnown) {
-            if (topNames.includes(item)) {
-              memoryStreaks[item] = (memoryStreaks[item] || 0) + 1;
-              if (memoryStreaks[item] === threshold) {
-                const itemData = sorted.find((x) => x.pair === item);
-                hotAlerts.push({
-                  pair: item,
-                  category: categoryName,
-                  streak: threshold,
-                  pct: itemData ? itemData.pct : 0,
-                  dir: itemData ? itemData.dir : "LONG",
-                });
-              }
-            } else {
-              delete memoryStreaks[item];
-            }
-          }
-        };
-
-        checkCategoryStreaks("crypto", snapshot.crypto);
-        checkCategoryStreaks("metals", snapshot.metals);
-        checkCategoryStreaks("inst", snapshot.inst);
-
-        // Telegram Notification for Sustained Momentum Streaks
-        if (env.TG_TOKEN && env.TG_CHAT && hotAlerts.length > 0) {
-          for (const alert of hotAlerts) {
-            const emoji = alert.dir === "LONG" ? "🟢" : "🔴";
-            const text = \`🔥 *FLOW MONITOR ALERT* 🔥\\n\\n\${emoji} *\${alert.pair}* (\${alert.category.toUpperCase()})\\n⚡ Sustained Momentum: *\${alert.streak}x berturut-turut*\\n📊 ROC: *\${alert.pct > 0 ? "+" : ""}\${alert.pct.toFixed(2)}%* (\${alert.dir})\\n⏰ Waktu: \${snapshot.time}\`;
-            await fetch(\`https://api.telegram.org/bot\${env.TG_TOKEN}/sendMessage\`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ chat_id: env.TG_CHAT, text, parse_mode: "Markdown" }),
-            }).catch(() => {});
-          }
-        }
-
-        memoryLatest = snapshot;
-        memoryHistory.unshift({ time: snapshot.time, timestamp: snapshot.timestamp, count: (snapshot.crypto.length + snapshot.metals.length + snapshot.inst.length) });
-        if (memoryHistory.length > 50) memoryHistory.pop();
-
-        if (env.FM) {
-          await env.FM.put("latest_snapshot", JSON.stringify(snapshot));
-          await env.FM.put("streaks", JSON.stringify(memoryStreaks));
-        }
-
-        return jsonResponse({ ok: true, saved: true, timestamp: now, assetsIngested: (snapshot.crypto.length + snapshot.metals.length + snapshot.inst.length) });
-      } catch (err) {
-        return jsonResponse({ error: "Invalid JSON or server error", details: err.message }, 400);
-      }
-    }
-
-    // ── GET /latest ──
-    if (url.pathname === "/latest" || url.pathname === "/fm/latest" || (request.method === "GET" && url.pathname === "/")) {
-      if (env.FM) {
-        try {
-          const kvData = await env.FM.get("fm:latest", { type: "json" });
-          if (kvData) return jsonResponse(kvData);
-        } catch (_) {}
-      }
-      if (memoryLatest) return jsonResponse(memoryLatest);
-      return jsonResponse({ status: "waiting_for_first_alert", time: new Date().toISOString() });
-    }
-
-    // ── GET /history ──
-    if (url.pathname === "/history" || url.pathname === "/fm/history") {
-      if (env.FM) {
-        try {
-          const kvHist = await env.FM.get("fm:history", { type: "json" });
-          if (kvHist) return jsonResponse(kvHist);
-        } catch (_) {}
-      }
-      return jsonResponse(memoryHistory);
-    }
-
-    // ── GET /streaks ──
-    if (url.pathname === "/streaks" || url.pathname === "/fm/streaks") {
-      if (env.FM) {
-        try {
-          const kvStreaks = await env.FM.get("fm:streaks", { type: "json" });
-          if (kvStreaks) return jsonResponse(kvStreaks);
-        } catch (_) {}
-      }
-      return jsonResponse(memoryStreaks);
-    }
-
-    return jsonResponse({ error: "Endpoint not found" }, 404);
-  }
-};`;
+  const WORKER_SCRIPT_CODE = FLOW_MONITOR_WORKER_SCRIPT;
 
   const copyToClipboard = (text: string, type: 'pine' | 'worker') => {
     navigator.clipboard.writeText(text);
@@ -509,32 +74,30 @@ export default {
     setTestResult(null);
     try {
       const payload = {
-        time: new Date().toLocaleTimeString('en-GB'),
-        mode: '1H Intraday',
+        time: new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
+        mode: 'PineScript 15 Prime',
+        source: 'simulator_test',
         crypto: [
-          { pair: 'BTC', pct: 2.15, dir: 'LONG' },
-          { pair: 'ETH', pct: 1.84, dir: 'LONG' },
-          { pair: 'SOL', pct: 4.20, dir: 'LONG' },
+          { pair: 'BTC', pct: 2.15, price: 65420.5, dir: 'LONG' },
+          { pair: 'ETH', pct: 1.84, price: 3480.2, dir: 'LONG' },
+          { pair: 'SOL', pct: 4.20, price: 152.4, dir: 'LONG' },
+          { pair: 'BNB', pct: 0.75, price: 588.1, dir: 'LONG' },
+          { pair: 'XRP', pct: -0.45, price: 0.582, dir: 'SHORT' },
         ],
         metals: [
-          { pair: 'XAUUSD', pct: 0.95, dir: 'LONG' },
-          { pair: 'XAGUSD', pct: 1.40, dir: 'LONG' },
-          { pair: 'USOIL', pct: -0.80, dir: 'SHORT' },
+          { pair: 'GOLD', pct: 0.95, price: 2655.4, dir: 'LONG' },
+          { pair: 'SILVER', pct: 1.40, price: 31.85, dir: 'LONG' },
+          { pair: 'USOIL', pct: -0.80, price: 71.4, dir: 'SHORT' },
+          { pair: 'UKOIL', pct: -0.65, price: 75.2, dir: 'SHORT' },
+          { pair: 'NATGAS', pct: 1.20, price: 2.78, dir: 'LONG' },
         ],
-        forex: [
-          { pair: 'EURUSD', pct: 0.42, dir: 'LONG' },
-          { pair: 'GBPUSD', pct: 0.58, dir: 'LONG' },
-          { pair: 'USDJPY', pct: -0.62, dir: 'SHORT' },
+        inst: [
+          { pair: 'US500', pct: 0.45, price: 5740.2, dir: 'LONG' },
+          { pair: 'NAS100', pct: 0.65, price: 20080.5, dir: 'LONG' },
+          { pair: 'US30', pct: 0.30, price: 42250.0, dir: 'LONG' },
+          { pair: 'GER40', pct: 0.20, price: 19180.0, dir: 'LONG' },
+          { pair: 'JP225', pct: -0.35, price: 38850.0, dir: 'SHORT' },
         ],
-        context: {
-          US10Y: -0.75,
-          DXY: -0.32,
-          AUDNZD: 0.18,
-          CHFJPY: 0.55,
-          EURGBP: -0.12,
-          USDCAD: -0.28,
-          XAUXAG: -0.45,
-        },
       };
 
       const targetUrl = testUrl.trim().replace(/\/$/, '');
@@ -600,13 +163,13 @@ export default {
             </div>
             <div>
               <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <span>TradingView Pine Script & Cloudflare Worker Webhook</span>
+                <span>TradingView Pine Script v6 & Cloudflare Webhook</span>
                 <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-semibold">
-                  v5 Ready
+                  15 Prime Assets
                 </span>
               </h2>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Hub integrasi sinyal otomatis untuk Bitcoin, Komoditas (Emas/Minyak), dan Forex 28 Pairs.
+                Sinyal otomatis 5 Indeks Teratas, 5 Crypto Teratas, dan 5 Komoditas Teratas (15 security calls aman, payload tunggal).
               </p>
             </div>
           </div>
@@ -629,7 +192,7 @@ export default {
             }`}
           >
             <FileCode className="w-3.5 h-3.5" />
-            <span>TradingView Pine Script v5</span>
+            <span>TradingView Pine Script v6 (15 Prime)</span>
           </button>
 
           <button

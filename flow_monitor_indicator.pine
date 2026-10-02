@@ -1,244 +1,133 @@
-//@version=5
-indicator("Flow Monitor - Multi-Asset Capital Momentum [TradingView v5]", "FlowMonitor", overlay=true)
+//@version=6
+// ══════════════════════════════════════════════════════════════════════════════
+// Indicator: Arah Market & Flow Monitor — 15 Prime Assets (Indeks, Crypto, Komoditas)
+// Author: Flow Monitor System
+// Architecture: Single Unified Webhook Payload (Top 5 Indeks, 5 Crypto, 5 Komoditas)
+// Guaranteed Safe: Exactly 15 request.security calls (jauh di bawah batas TV 40)
+// Anti-Error: Zero NaN sanitization, 1 single alert() call per candle close
+// ══════════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════
-// PENGATURAN INPUT (SETTINGS)
-// ════════════════════════════════════════════════════════════════
-grp_calc   = "Momentum ROC & Timeframe"
-tf_input   = input.timeframe("", "Calculation Timeframe (Kosong = Timeframe Chart)", group=grp_calc)
-roc_len    = input.int(1, "ROC Period (Bars)", minval=1, group=grp_calc)
-th_pct     = input.float(0.10, "Ambang Batas Minimum ROC (|ROC| >= %)", step=0.01, group=grp_calc)
+indicator("Arah Market & Flow Monitor — 15 Prime Assets (Indeks, Crypto, Komoditas)", shorttitle="FlowMonitor 15 Prime", overlay = false, max_bars_back = 500)
 
-grp_alert  = "Webhook & Alert"
-mode_label = input.string("Scalping", "Trading Mode Label", options=["Scalping", "Intraday", "Swing"], group=grp_alert)
-enable_tbl = input.bool(true, "Tampilkan Dashboard On-Chart", group="Visual Display")
-tbl_pos    = input.string("Top Right", "Posisi Dashboard", options=["Top Right", "Bottom Right", "Top Left", "Bottom Left"], group="Visual Display")
+// ── 1. INPUT PENGATURAN TICKER (Fleksibel jika ingin ganti broker/feed) ──
+grp_idx = "── 5 Indeks Teratas ──"
+sym_spx = input.symbol("OANDA:SPX500USD", "1. US500 (S&P 500)", group = grp_idx)
+sym_nsx = input.symbol("OANDA:NAS100USD", "2. NAS100 (Nasdaq 100)", group = grp_idx)
+sym_dji = input.symbol("OANDA:US30USD",   "3. US30 (Dow Jones)", group = grp_idx)
+sym_dax = input.symbol("OANDA:DE40EUR",   "4. GER40 (DAX 40)", group = grp_idx)
+sym_nik = input.symbol("OANDA:JP225USD",  "5. JP225 (Nikkei 225)", group = grp_idx)
 
-// ═══════════════════════════════════════════════════════════════
-// FUNGSI PENGHITUNG ROC MOMENTUM
-// ════════════════════════════════════════════════════════════════
-f_calc_roc(ticker_str) =>
-    c_curr = request.security(ticker_str, tf_input, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
-    c_prev = request.security(ticker_str, tf_input, close[roc_len], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
-    roc_val = c_prev != 0 ? ((c_curr - c_prev) / c_prev) * 100.0 : 0.0
-    [c_curr, roc_val]
+grp_cry = "── 5 Crypto Teratas ──"
+sym_btc = input.symbol("BINANCE:BTCUSDT", "1. Bitcoin (BTC)", group = grp_cry)
+sym_eth = input.symbol("BINANCE:ETHUSDT", "2. Ethereum (ETH)", group = grp_cry)
+sym_sol = input.symbol("BINANCE:SOLUSDT", "3. Solana (SOL)", group = grp_cry)
+sym_bnb = input.symbol("BINANCE:BNBUSDT", "4. BNB Chain (BNB)", group = grp_cry)
+sym_xrp = input.symbol("BINANCE:XRPUSDT", "5. Ripple (XRP)", group = grp_cry)
 
-// ═══════════════════════════════════════════════════════════════
-// PENGAMBILAN DATA MULTI-ASET (DATA STREAMS)
-// ════════════════════════════════════════════════════════════════
-// 1. FOREX (24 Major & Cross Pairs)
-[_, r_EURUSD] = f_calc_roc("FX:EURUSD")
-[_, r_GBPUSD] = f_calc_roc("FX:GBPUSD")
-[_, r_USDJPY] = f_calc_roc("FX:USDJPY")
-[_, r_AUDUSD] = f_calc_roc("FX:AUDUSD")
-[_, r_USDCAD] = f_calc_roc("FX:USDCAD")
-[_, r_USDCHF] = f_calc_roc("FX:USDCHF")
-[_, r_NZDUSD] = f_calc_roc("FX:NZDUSD")
+grp_cmd = "── 5 Komoditas Teratas ──"
+sym_xau = input.symbol("OANDA:XAUUSD", "1. Emas (GOLD)", group = grp_cmd)
+sym_xag = input.symbol("OANDA:XAGUSD", "2. Perak (SILVER)", group = grp_cmd)
+sym_oil = input.symbol("TVC:USOIL",    "3. Minyak WTI (USOIL)", group = grp_cmd)
+sym_bco = input.symbol("TVC:UKOIL",    "4. Minyak Brent (UKOIL)", group = grp_cmd)
+sym_gas = input.symbol("TVC:NATGAS",   "5. Gas Alam (NATGAS)", group = grp_cmd)
 
-[_, r_EURJPY] = f_calc_roc("FX:EURJPY")
-[_, r_GBPJPY] = f_calc_roc("FX:GBPJPY")
-[_, r_AUDJPY] = f_calc_roc("FX:AUDJPY")
-[_, r_CADJPY] = f_calc_roc("FX:CADJPY")
-[_, r_CHFJPY] = f_calc_roc("FX:CHFJPY")
-[_, r_NZDJPY] = f_calc_roc("FX:NZDJPY")
+grp_cfg = "── Pengaturan Alert & Tampilan ──"
+trigger_mode = input.string("Once Per Bar Close", "Frekuensi Webhook", options = ["Once Per Bar Close", "Realtime / Every Tick"], group = grp_cfg)
+show_hud     = input.bool(true, "Tampilkan Tabel HUD On-Chart", group = grp_cfg)
 
-[_, r_EURGBP] = f_calc_roc("FX:EURGBP")
-[_, r_EURAUD] = f_calc_roc("FX:EURAUD")
-[_, r_EURCAD] = f_calc_roc("FX:EURCAD")
-[_, r_EURCHF] = f_calc_roc("FX:EURCHF")
-[_, r_EURNZD] = f_calc_roc("FX:EURNZD")
+// ── 2. FUNGSI EKSTRAKSI DATA (AMAN DARI NaN) ──
+f_data(sym) =>
+    [c, c1] = request.security(sym, timeframe.period, [close, close[1]], barmerge.gaps_off, barmerge.lookahead_off)
+    safeC = na(c) ? 0.0 : c
+    safeC1 = na(c1) ? 0.0 : c1
+    chg = safeC1 > 0 and safeC > 0 ? math.round(((safeC - safeC1) / safeC1) * 10000) / 100 : 0.0
+    dir = chg >= 0 ? "LONG" : "SHORT"
+    [safeC, chg, dir]
 
-[_, r_GBPAUD] = f_calc_roc("FX:GBPAUD")
-[_, r_GBPCAD] = f_calc_roc("FX:GBPCAD")
-[_, r_GBPCHF] = f_calc_roc("FX:GBPCHF")
-[_, r_GBPNZD] = f_calc_roc("FX:GBPNZD")
+f_item(pair, price, chg, dir) =>
+    '{"pair":"' + pair + '","pct":' + str.tostring(chg, "#.##") + ',"price":' + str.tostring(price, "#.####") + ',"dir":"' + dir + '"}'
 
-[_, r_AUDCAD] = f_calc_roc("FX:AUDCAD")
-[_, r_AUDCHF] = f_calc_roc("FX:AUDCHF")
-[_, r_AUDNZD] = f_calc_roc("FX:AUDNZD")
-[_, r_NZDCAD] = f_calc_roc("FX:NZDCAD")
+// ── 3. FETCH DATA (PERSIS 15 CALLS) ──
+// Indeks (5)
+[spxP, spxChg, spxDir] = f_data(sym_spx)
+[nsxP, nsxChg, nsxDir] = f_data(sym_nsx)
+[djiP, djiChg, djiDir] = f_data(sym_dji)
+[daxP, daxChg, daxDir] = f_data(sym_dax)
+[nikP, nikChg, nikDir] = f_data(sym_nik)
 
-// 2. CRYPTO & BITCOIN
-[p_BTC, r_BTC] = f_calc_roc("BINANCE:BTCUSDT")
-[p_ETH, r_ETH] = f_calc_roc("BINANCE:ETHUSDT")
-[p_SOL, r_SOL] = f_calc_roc("BINANCE:SOLUSDT")
-[p_BNB, r_BNB] = f_calc_roc("BINANCE:BNBUSDT")
-[p_XRP, r_XRP] = f_calc_roc("BINANCE:XRPUSDT")
+// Crypto (5)
+[btcP, btcChg, btcDir] = f_data(sym_btc)
+[ethP, ethChg, ethDir] = f_data(sym_eth)
+[solP, solChg, solDir] = f_data(sym_sol)
+[bnbP, bnbChg, bnbDir] = f_data(sym_bnb)
+[xrpP, xrpChg, xrpDir] = f_data(sym_xrp)
 
-// 3. KOMODITAS & LOGAM MULIA (METALS & ENERGY)
-[p_GOLD,   r_GOLD]   = f_calc_roc("OANDA:XAUUSD")
-[p_SILVER, r_SILVER] = f_calc_roc("OANDA:XAGUSD")
-[p_USOIL,  r_USOIL]  = f_calc_roc("TVC:USOIL")
-[p_UKOIL,  r_UKOIL]  = f_calc_roc("TVC:UKOIL")
-[p_COPPER, r_COPPER] = f_calc_roc("CAPITALCOM:COPPER")
+// Komoditas (5)
+[xauP, xauChg, xauDir] = f_data(sym_xau)
+[xagP, xagChg, xagDir] = f_data(sym_xag)
+[oilP, oilChg, oilDir] = f_data(sym_oil)
+[bcoP, bcoChg, bcoDir] = f_data(sym_bco)
+[gasP, gasChg, gasDir] = f_data(sym_gas)
 
-// 4. MARKET CONTEXT (INTERMARKET BAROMETER)
-[_, r_US10Y]  = f_calc_roc("TVC:US10Y")
-[_, r_DXY]    = f_calc_roc("TVC:DXY")
-r_XAUXAG = (p_SILVER != 0 and r_SILVER != 0) ? (r_GOLD - r_SILVER) : 0.0
+// ── 4. BANGUN PAYLOAD TUNGGAL (SATU KALI ALERT PER CANDLE) ──
+indeksJson = '[' +
+     f_item("US500",  spxP, spxChg, spxDir) + ',' +
+     f_item("NAS100", nsxP, nsxChg, nsxDir) + ',' +
+     f_item("US30",   djiP, djiChg, djiDir) + ',' +
+     f_item("GER40",  daxP, daxChg, daxDir) + ',' +
+     f_item("JP225",  nikP, nikChg, nikDir) + ']'
 
-// ═══════════════════════════════════════════════════════════════
-// ARRAY POPULATION & SORTING ENGINE (BERDASARKAN |ROC|)
-// ════════════════════════════════════════════════════════════════
-var string[] fx_names = array.new_string()
-var float[]  fx_rocs  = array.new_float()
+cryptoJson = '[' +
+     f_item("BTC", btcP, btcChg, btcDir) + ',' +
+     f_item("ETH", ethP, ethChg, ethDir) + ',' +
+     f_item("SOL", solP, solChg, solDir) + ',' +
+     f_item("BNB", bnbP, bnbChg, bnbDir) + ',' +
+     f_item("XRP", xrpP, xrpChg, xrpDir) + ']'
 
-array.clear(fx_names)
-array.clear(fx_rocs)
+metalsJson = '[' +
+     f_item("GOLD",   xauP, xauChg, xauDir) + ',' +
+     f_item("SILVER", xagP, xagChg, xagDir) + ',' +
+     f_item("USOIL",  oilP, oilChg, oilDir) + ',' +
+     f_item("UKOIL",  bcoP, bcoChg, bcoDir) + ',' +
+     f_item("NATGAS", gasP, gasChg, gasDir) + ']'
 
-// Populate Forex
-array.push(fx_names, "EURUSD"); array.push(fx_rocs, r_EURUSD)
-array.push(fx_names, "GBPUSD"); array.push(fx_rocs, r_GBPUSD)
-array.push(fx_names, "USDJPY"); array.push(fx_rocs, r_USDJPY)
-array.push(fx_names, "AUDUSD"); array.push(fx_rocs, r_AUDUSD)
-array.push(fx_names, "USDCAD"); array.push(fx_rocs, r_USDCAD)
-array.push(fx_names, "USDCHF"); array.push(fx_rocs, r_USDCHF)
-array.push(fx_names, "NZDUSD"); array.push(fx_rocs, r_NZDUSD)
-array.push(fx_names, "EURJPY"); array.push(fx_rocs, r_EURJPY)
-array.push(fx_names, "GBPJPY"); array.push(fx_rocs, r_GBPJPY)
-array.push(fx_names, "AUDJPY"); array.push(fx_rocs, r_AUDJPY)
-array.push(fx_names, "CADJPY"); array.push(fx_rocs, r_CADJPY)
-array.push(fx_names, "CHFJPY"); array.push(fx_rocs, r_CHFJPY)
-array.push(fx_names, "NZDJPY"); array.push(fx_rocs, r_NZDJPY)
-array.push(fx_names, "EURGBP"); array.push(fx_rocs, r_EURGBP)
-array.push(fx_names, "EURAUD"); array.push(fx_rocs, r_EURAUD)
-array.push(fx_names, "EURCAD"); array.push(fx_rocs, r_EURCAD)
-array.push(fx_names, "EURCHF"); array.push(fx_rocs, r_EURCHF)
-array.push(fx_names, "EURNZD"); array.push(fx_rocs, r_EURNZD)
-array.push(fx_names, "GBPAUD"); array.push(fx_rocs, r_GBPAUD)
-array.push(fx_names, "GBPCAD"); array.push(fx_rocs, r_GBPCAD)
-array.push(fx_names, "GBPCHF"); array.push(fx_rocs, r_GBPCHF)
-array.push(fx_names, "GBPNZD"); array.push(fx_rocs, r_GBPNZD)
-array.push(fx_names, "AUDCAD"); array.push(fx_rocs, r_AUDCAD)
-array.push(fx_names, "AUDCHF"); array.push(fx_rocs, r_AUDCHF)
-array.push(fx_names, "AUDNZD"); array.push(fx_rocs, r_AUDNZD)
-array.push(fx_names, "NZDCAD"); array.push(fx_rocs, r_NZDCAD)
+timeStr = str.format_time(time, "yyyy-MM-dd HH:mm:ss", "UTC")
+unifiedPayload = '{"time":"' + timeStr + '","tf":"' + timeframe.period + '","source":"tv_pinescript_15","inst":' + indeksJson + ',"crypto":' + cryptoJson + ',"metals":' + metalsJson + '}'
 
-// Bubble sort descending based on absolute ROC
-fx_sz = array.size(fx_names)
-for i = 0 to fx_sz - 2
-    for j = 0 to fx_sz - i - 2
-        r1 = math.abs(array.get(fx_rocs, j))
-        r2 = math.abs(array.get(fx_rocs, j + 1))
-        if r1 < r2
-            // Swap ROC
-            tmp_r = array.get(fx_rocs, j)
-            array.set(fx_rocs, j, array.get(fx_rocs, j + 1))
-            array.set(fx_rocs, j + 1, tmp_r)
-            // Swap Name
-            tmp_n = array.get(fx_names, j)
-            array.set(fx_names, j, array.get(fx_names, j + 1))
-            array.set(fx_names, j + 1, tmp_n)
+// ── 5. PENGIRIMAN ALERT TUNGGAL KE CLOUDFLARE WORKER ──
+is_ready = trigger_mode == "Once Per Bar Close" ? barstate.isconfirmed : barstate.isrealtime
+if is_ready
+    alert(unifiedPayload, alert.freq_once_per_bar)
 
-// ═══════════════════════════════════════════════════════════════
-// FORMAT JSON PAYLOAD GENERATOR
-// ════════════════════════════════════════════════════════════════
-// Format Waktu Jakarta (WIB)
-time_str = str.tostring(dayofmonth) + "/" + str.tostring(month) + "/" + str.tostring(year) + " | " + str.tostring(hour) + ":" + (minute < 10 ? "0" : "") + str.tostring(minute) + " WIB"
+// ── 6. TABEL HUD ON-CHART (Ringkasan 15 Prime Aset) ──
+var table hud = table.new(position.bottom_left, 4, 7, bgcolor = color.new(color.black, 20), border_color = color.new(color.gray, 60), border_width = 1)
+if show_hud and barstate.islast
+    table.cell(hud, 0, 0, "FLOW MONITOR",   bgcolor = color.new(#0f766e, 20), text_color = color.white, text_size = size.small)
+    table.cell(hud, 1, 0, "INDEKS (5)",     bgcolor = color.new(#6366f1, 20), text_color = color.white, text_size = size.small)
+    table.cell(hud, 2, 0, "CRYPTO (5)",     bgcolor = color.new(#f59e0b, 20), text_color = color.white, text_size = size.small)
+    table.cell(hud, 3, 0, "KOMODITAS (5)",  bgcolor = color.new(#10b981, 20), text_color = color.white, text_size = size.small)
 
-// Build Forex Array JSON string
-forex_json = ""
-for k = 0 to fx_sz - 1
-    p_name = array.get(fx_names, k)
-    p_roc  = array.get(fx_rocs, k)
-    p_dir  = p_roc >= 0 ? "LONG" : "SHORT"
-    delim  = k < fx_sz - 1 ? "," : ""
-    forex_json := forex_json + "{\"pair\":\"" + p_name + "\",\"pct\":" + str.tostring(p_roc, "#.##") + ",\"dir\":\"" + p_dir + "\"}" + delim
+    table.cell(hud, 0, 1, "Timeframe", text_color = color.gray, text_size = size.small)
+    table.cell(hud, 1, 1, "US500: " + str.tostring(spxChg, "#.##") + "%", bgcolor = spxChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 2, 1, "BTC: " + str.tostring(btcChg, "#.##") + "%",   bgcolor = btcChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 3, 1, "GOLD: " + str.tostring(xauChg, "#.##") + "%",  bgcolor = xauChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
 
-// Metals Array JSON
-metals_json = "{\"pair\":\"GOLD\",\"pct\":" + str.tostring(r_GOLD, "#.##") + ",\"dir\":\"" + (r_GOLD >= 0 ? "LONG" : "SHORT") + "\"}," +
-              "{\"pair\":\"SILVER\",\"pct\":" + str.tostring(r_SILVER, "#.##") + ",\"dir\":\"" + (r_SILVER >= 0 ? "LONG" : "SHORT") + "\"}," +
-              "{\"pair\":\"USOIL\",\"pct\":" + str.tostring(r_USOIL, "#.##") + ",\"dir\":\"" + (r_USOIL >= 0 ? "LONG" : "SHORT") + "\"}," +
-              "{\"pair\":\"UKOIL\",\"pct\":" + str.tostring(r_UKOIL, "#.##") + ",\"dir\":\"" + (r_UKOIL >= 0 ? "LONG" : "SHORT") + "\"}," +
-              "{\"pair\":\"COPPER\",\"pct\":" + str.tostring(r_COPPER, "#.##") + ",\"dir\":\"" + (r_COPPER >= 0 ? "LONG" : "SHORT") + "\"}"
+    table.cell(hud, 0, 2, timeframe.period, text_color = color.white, text_size = size.small)
+    table.cell(hud, 1, 2, "NAS100: " + str.tostring(nsxChg, "#.##") + "%", bgcolor = nsxChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 2, 2, "ETH: " + str.tostring(ethChg, "#.##") + "%",   bgcolor = ethChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 3, 2, "SILVER: " + str.tostring(xagChg, "#.##") + "%", bgcolor = xagChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
 
-// Crypto Array JSON
-crypto_json = "{\"pair\":\"BTC\",\"pct\":" + str.tostring(r_BTC, "#.##") + ",\"dir\":\"" + (r_BTC >= 0 ? "LONG" : "SHORT") + "\"}," +
-              "{\"pair\":\"ETH\",\"pct\":" + str.tostring(r_ETH, "#.##") + ",\"dir\":\"" + (r_ETH >= 0 ? "LONG" : "SHORT") + "\"}," +
-              "{\"pair\":\"SOL\",\"pct\":" + str.tostring(r_SOL, "#.##") + ",\"dir\":\"" + (r_SOL >= 0 ? "LONG" : "SHORT") + "\"}," +
-              "{\"pair\":\"BNB\",\"pct\":" + str.tostring(r_BNB, "#.##") + ",\"dir\":\"" + (r_BNB >= 0 ? "LONG" : "SHORT") + "\"}," +
-              "{\"pair\":\"XRP\",\"pct\":" + str.tostring(r_XRP, "#.##") + ",\"dir\":\"" + (r_XRP >= 0 ? "LONG" : "SHORT") + "\"}"
+    table.cell(hud, 0, 3, "Pairs: 15 Safe", text_color = color.yellow, text_size = size.small)
+    table.cell(hud, 1, 3, "US30: " + str.tostring(djiChg, "#.##") + "%", bgcolor = djiChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 2, 3, "SOL: " + str.tostring(solChg, "#.##") + "%",   bgcolor = solChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 3, 3, "USOIL: " + str.tostring(oilChg, "#.##") + "%",  bgcolor = oilChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
 
-// Context JSON
-context_json = "{\"US10Y\":" + str.tostring(r_US10Y, "#.##") + "," +
-               "\"DXY\":" + str.tostring(r_DXY, "#.##") + "," +
-               "\"AUDNZD\":" + str.tostring(r_AUDNZD, "#.##") + "," +
-               "\"CHFJPY\":" + str.tostring(r_CHFJPY, "#.##") + "," +
-               "\"EURGBP\":" + str.tostring(r_EURGBP, "#.##") + "," +
-               "\"USDCAD\":" + str.tostring(r_USDCAD, "#.##") + "," +
-               "\"XAUXAG\":" + str.tostring(r_XAUXAG, "#.##") + "}"
+    table.cell(hud, 0, 4, "Webhook: Ready", text_color = color.cyan, text_size = size.small)
+    table.cell(hud, 1, 4, "GER40: " + str.tostring(daxChg, "#.##") + "%", bgcolor = daxChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 2, 4, "BNB: " + str.tostring(bnbChg, "#.##") + "%",   bgcolor = bnbChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 3, 4, "UKOIL: " + str.tostring(bcoChg, "#.##") + "%",  bgcolor = bcoChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
 
-// Full Combined Webhook Payload
-full_json_payload = "{" +
-  "\"time\":\"" + time_str + "\"," +
-  "\"mode\":\"" + mode_label + "\"," +
-  "\"forex\":[" + forex_json + "]," +
-  "\"metals\":[" + metals_json + "]," +
-  "\"crypto\":[" + crypto_json + "]," +
-  "\"context\":" + context_json +
-  "}"
-
-// ═══════════════════════════════════════════════════════════════
-// PEMICU ALARM WEBHOOK (ON BAR CLOSE)
-// ════════════════════════════════════════════════════════════════
-if barstate.isconfirmed
-    alert(full_json_payload, alert.freq_once_per_bar)
-
-// ═══════════════════════════════════════════════════════════════
-// ON-CHART HUD DASHBOARD (TABEL VISUAL)
-// ════════════════════════════════════════════════════════════════
-var table_pos = tbl_pos == "Top Right" ? position.top_right : tbl_pos == "Bottom Right" ? position.bottom_right : tbl_pos == "Top Left" ? position.top_left : position.bottom_left
-var table tbl = table.new(table_pos, 5, 12, bgcolor=color.new(#090C13, 10), border_color=color.new(#27272a, 30), border_width=1)
-
-if barstate.islast and enable_tbl
-    // Header
-    table.cell(tbl, 0, 0, "FLOW MONITOR", bgcolor=color.new(#06b6d4, 20), text_color=color.white, text_size=size.small)
-    table.cell(tbl, 1, 0, "INSTRUMEN", bgcolor=color.new(#06b6d4, 20), text_color=color.white, text_size=size.small)
-    table.cell(tbl, 2, 0, "ROC %", bgcolor=color.new(#06b6d4, 20), text_color=color.white, text_size=size.small)
-    table.cell(tbl, 3, 0, "ARAH", bgcolor=color.new(#06b6d4, 20), text_color=color.white, text_size=size.small)
-    table.cell(tbl, 4, 0, "STATUS", bgcolor=color.new(#06b6d4, 20), text_color=color.white, text_size=size.small)
-
-    // Top 3 Forex
-    for row = 0 to 2
-        f_name = array.get(fx_names, row)
-        f_roc  = array.get(fx_rocs, row)
-        f_bull = f_roc >= 0
-        c_col  = f_bull ? color.new(#10b981, 0) : color.new(#f43f5e, 0)
-        table.cell(tbl, 0, row + 1, "#" + str.tostring(row + 1), text_color=color.gray, text_size=size.small)
-        table.cell(tbl, 1, row + 1, f_name, text_color=color.white, text_size=size.small)
-        table.cell(tbl, 2, row + 1, (f_bull ? "+" : "") + str.tostring(f_roc, "#.##") + "%", text_color=c_col, text_size=size.small)
-        table.cell(tbl, 3, row + 1, f_bull ? "▲ LONG" : "▼ SHORT", text_color=c_col, text_size=size.small)
-        table.cell(tbl, 4, row + 1, math.abs(f_roc) >= th_pct ? "⚡ ACTIVE" : "• WEAK", text_color=math.abs(f_roc) >= th_pct ? color.yellow : color.gray, text_size=size.small)
-
-    // Crypto (BTC & ETH)
-    table.cell(tbl, 0, 4, "₿", text_color=color.orange, text_size=size.small)
-    table.cell(tbl, 1, 4, "BTC", text_color=color.white, text_size=size.small)
-    table.cell(tbl, 2, 4, (r_BTC >= 0 ? "+" : "") + str.tostring(r_BTC, "#.##") + "%", text_color=r_BTC >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 3, 4, r_BTC >= 0 ? "▲ LONG" : "▼ SHORT", text_color=r_BTC >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 4, 4, math.abs(r_BTC) >= th_pct ? "⚡ FLOW" : "CHOP", text_color=color.gray, text_size=size.small)
-
-    table.cell(tbl, 0, 5, "Ξ", text_color=color.purple, text_size=size.small)
-    table.cell(tbl, 1, 5, "ETH", text_color=color.white, text_size=size.small)
-    table.cell(tbl, 2, 5, (r_ETH >= 0 ? "+" : "") + str.tostring(r_ETH, "#.##") + "%", text_color=r_ETH >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 3, 5, r_ETH >= 0 ? "▲ LONG" : "▼ SHORT", text_color=r_ETH >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 4, 5, math.abs(r_ETH) >= th_pct ? "⚡ FLOW" : "CHOP", text_color=color.gray, text_size=size.small)
-
-    // Metals (Gold & Oil)
-    table.cell(tbl, 0, 6, "🥇", text_color=color.yellow, text_size=size.small)
-    table.cell(tbl, 1, 6, "GOLD", text_color=color.white, text_size=size.small)
-    table.cell(tbl, 2, 6, (r_GOLD >= 0 ? "+" : "") + str.tostring(r_GOLD, "#.##") + "%", text_color=r_GOLD >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 3, 6, r_GOLD >= 0 ? "▲ LONG" : "▼ SHORT", text_color=r_GOLD >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 4, 6, math.abs(r_GOLD) >= th_pct ? "⚡ FLOW" : "CHOP", text_color=color.gray, text_size=size.small)
-
-    table.cell(tbl, 0, 7, "🛢️", text_color=color.aqua, text_size=size.small)
-    table.cell(tbl, 1, 7, "USOIL", text_color=color.white, text_size=size.small)
-    table.cell(tbl, 2, 7, (r_USOIL >= 0 ? "+" : "") + str.tostring(r_USOIL, "#.##") + "%", text_color=r_USOIL >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 3, 7, r_USOIL >= 0 ? "▲ LONG" : "▼ SHORT", text_color=r_USOIL >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 4, 7, math.abs(r_USOIL) >= th_pct ? "⚡ FLOW" : "CHOP", text_color=color.gray, text_size=size.small)
-
-    // Context Summary (DXY & US10Y)
-    table.cell(tbl, 0, 8, "🌐", text_color=color.teal, text_size=size.small)
-    table.cell(tbl, 1, 8, "DXY / US10Y", text_color=color.white, text_size=size.small)
-    table.cell(tbl, 2, 8, str.tostring(r_DXY, "#.##") + "% / " + str.tostring(r_US10Y, "#.##") + "%", text_color=color.white, text_size=size.small)
-    table.cell(tbl, 3, 8, r_DXY >= 0 ? "DXY BULL" : "DXY BEAR", text_color=r_DXY >= 0 ? color.green : color.red, text_size=size.small)
-    table.cell(tbl, 4, 8, "CONTEXT", text_color=color.gray, text_size=size.small)
+    table.cell(hud, 0, 5, "Forex: via CS", text_color = color.gray, text_size = size.small)
+    table.cell(hud, 1, 5, "JP225: " + str.tostring(nikChg, "#.##") + "%", bgcolor = nikChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 2, 5, "XRP: " + str.tostring(xrpChg, "#.##") + "%",   bgcolor = xrpChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)
+    table.cell(hud, 3, 5, "NATGAS: " + str.tostring(gasChg, "#.##") + "%", bgcolor = gasChg >= 0 ? color.new(color.green, 70) : color.new(color.red, 70), text_color = color.white, text_size = size.small)

@@ -88,6 +88,132 @@ export const CURRENCY_CODES: CurrencyCode[] = [
   'USD', 'EUR', 'GBP', 'JPY', 'CHF', 'AUD', 'CAD', 'NZD'
 ];
 
+export function getCurrencyConfig(code: string): CurrencyConfig {
+  if (code && CURRENCIES[code as CurrencyCode]) {
+    return CURRENCIES[code as CurrencyCode];
+  }
+  const u = (code || '').toUpperCase().trim();
+  if (u === 'XAU' || u === 'GOLD') {
+    return {
+      code: 'XAU' as CurrencyCode,
+      name: 'Emas (Gold)',
+      country: 'Komoditas Logam',
+      flag: '🪙',
+      color: '#eab308',
+      symbol: '$',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'XAG' || u === 'SILVER') {
+    return {
+      code: 'XAG' as CurrencyCode,
+      name: 'Perak (Silver)',
+      country: 'Komoditas Logam',
+      flag: '🥈',
+      color: '#94a3b8',
+      symbol: '$',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'WTI' || u === 'OIL' || u === 'USOIL') {
+    return {
+      code: 'WTI' as CurrencyCode,
+      name: 'Minyak Mentah (Crude Oil)',
+      country: 'Komoditas Energi',
+      flag: '🛢️',
+      color: '#f97316',
+      symbol: '$',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'BTC') {
+    return {
+      code: 'BTC' as CurrencyCode,
+      name: 'Bitcoin',
+      country: 'Crypto Asset',
+      flag: '₿',
+      color: '#f59e0b',
+      symbol: '₿',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'ETH') {
+    return {
+      code: 'ETH' as CurrencyCode,
+      name: 'Ethereum',
+      country: 'Crypto Asset',
+      flag: 'Ξ',
+      color: '#6366f1',
+      symbol: 'Ξ',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'SOL') {
+    return {
+      code: 'SOL' as CurrencyCode,
+      name: 'Solana',
+      country: 'Crypto Asset',
+      flag: '◎',
+      color: '#a855f7',
+      symbol: '◎',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'US30' || u === 'DJI') {
+    return {
+      code: 'US30' as CurrencyCode,
+      name: 'Dow Jones 30',
+      country: 'Indeks Saham AS',
+      flag: '📈',
+      color: '#0ea5e9',
+      symbol: 'pts',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'NAS100' || u === 'NDX') {
+    return {
+      code: 'NAS100' as CurrencyCode,
+      name: 'Nasdaq 100',
+      country: 'Indeks Saham AS',
+      flag: '💻',
+      color: '#06b6d4',
+      symbol: 'pts',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'SPX500' || u === 'SPX') {
+    return {
+      code: 'SPX500' as CurrencyCode,
+      name: 'S&P 500',
+      country: 'Indeks Saham AS',
+      flag: '🏛️',
+      color: '#3b82f6',
+      symbol: 'pts',
+      baseWeight: 1.0,
+    };
+  }
+  if (u === 'USDT') {
+    return {
+      code: 'USDT' as CurrencyCode,
+      name: 'Tether USD',
+      country: 'Stablecoin',
+      flag: '💵',
+      color: '#10b981',
+      symbol: '$',
+      baseWeight: 1.0,
+    };
+  }
+  return {
+    code: (code || 'USD') as CurrencyCode,
+    name: code || 'Asset',
+    country: 'Pasar Global',
+    flag: '🌐',
+    color: '#0ea5e9',
+    symbol: code || '',
+    baseWeight: 1.0,
+  };
+}
+
 export interface TimeframeConfig {
   key: TimeframeKey;
   label: string;
@@ -442,16 +568,16 @@ export function generateInitialHistory(timeframe: TimeframeKey, count: number = 
   else if (timeframe === '8H') intervalMs = 60 * 1000 * 480;
   else if (timeframe === '1D') intervalMs = 24 * 60 * 1000 * 60;
 
-  // Initial baseline scores with distinctive dispersion
+  // Initial baseline scores calibrated to match live Currency-Strength snapshot
   const baseScores: Record<CurrencyCode, number> = {
-    USD: 7.85,
-    EUR: 6.40,
-    GBP: 5.65,
-    AUD: 5.15,
-    CAD: 4.80,
-    CHF: 4.25,
-    NZD: 3.40,
-    JPY: 2.10,
+    CHF: 8.33,
+    JPY: 8.20,
+    NZD: 5.84,
+    AUD: 5.21,
+    GBP: 4.53,
+    EUR: 3.69,
+    USD: 2.68,
+    CAD: 1.47,
   };
 
   // Trajectory directions and phases
@@ -491,11 +617,16 @@ export function generateInitialHistory(timeframe: TimeframeKey, count: number = 
       const p = phases[code];
       const f = frequencies[code];
       const base = baseScores[code];
-      // Multi-sine wave + slight random walk
-      const wave = Math.sin(stepIndex * f + p) * 1.6 + Math.cos(stepIndex * (f * 0.4) + p * 0.7) * 0.7;
-      const noise = (Math.sin(stepIndex * 13 + p * 7) * 0.25);
-      const rawVal = base + wave + noise;
-      scores[code] = Math.max(0.6, Math.min(9.6, Number(rawVal.toFixed(2))));
+      if (i === 0) {
+        // Anchor the latest bar exactly to the target calibrated score
+        scores[code] = base;
+      } else {
+        // Earlier history steps have gentle organic wave
+        const wave = (Math.sin((count - 1 - i) * f + p) * 0.45);
+        const noise = (Math.sin((count - 1 - i) * 11 + p * 5) * 0.12);
+        const rawVal = base + wave + noise;
+        scores[code] = Math.max(0.6, Math.min(9.8, Number(rawVal.toFixed(2))));
+      }
     });
 
     result.push({

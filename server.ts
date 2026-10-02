@@ -69,30 +69,6 @@ let lastFetchFmLatest = 0;
 let cachedFmHistory: any = null;
 let lastFetchFmHistory = 0;
 
-async function fetchBinanceCryptoFlow(): Promise<any[]> {
-  try {
-    const symbols = encodeURIComponent(JSON.stringify(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'ADAUSDT']));
-    const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=${symbols}`, {
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!res.ok) return [];
-    const list = await res.json();
-    if (!Array.isArray(list)) return [];
-    return list.map((item: any) => {
-      const pairName = item.symbol.replace('USDT', '');
-      const pct = parseFloat(item.priceChangePercent) || 0;
-      return {
-        pair: pairName,
-        pct: Number(pct.toFixed(2)),
-        dir: pct >= 0 ? 'LONG' : 'SHORT',
-        price: parseFloat(item.lastPrice) || 0,
-      };
-    });
-  } catch {
-    return [];
-  }
-}
-
 app.get('/api/flow-monitor/latest', async (req, res) => {
   const now = Date.now();
   if (cachedFmLatest && now - lastFetchFmLatest < 10000) {
@@ -101,128 +77,82 @@ app.get('/api/flow-monitor/latest', async (req, res) => {
 
   try {
     const workerUrl = (req.query.workerUrl as string) || 'https://flowmonitor.aideelyst.workers.dev/latest';
-    const response = await fetch(workerUrl, {
+    const workerRes = await fetch(workerUrl, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(5000),
-    });
+    }).catch(() => null);
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data && !data.error) {
-        const binanceCrypto = await fetchBinanceCryptoFlow();
-        if (binanceCrypto.length > 0) {
-          const mergedCrypto = [...(data.crypto || [])];
-          binanceCrypto.forEach((bc) => {
-            const idx = mergedCrypto.findIndex((c) => c.pair === bc.pair || c.pair === `${bc.pair}USD` || c.pair === `${bc.pair}USDT`);
-            if (idx >= 0) {
-              mergedCrypto[idx] = { ...mergedCrypto[idx], ...bc };
-            } else {
-              mergedCrypto.push(bc);
-            }
-          });
-          data.crypto = mergedCrypto;
-        }
+    let data: any = null;
+    if (workerRes && workerRes.ok) {
+      data = await workerRes.json().catch(() => null);
+    }
 
-        // Ensure inst/indices exist
-        if (!data.inst || data.inst.length === 0) {
-          data.inst = [
-            { pair: 'US500', pct: 0.18, dir: 'LONG' },
-            { pair: 'NAS100', pct: 0.25, dir: 'LONG' },
-            { pair: 'US30', pct: 0.12, dir: 'LONG' },
-            { pair: 'GER40', pct: -0.15, dir: 'SHORT' },
-            { pair: 'JP225', pct: 0.31, dir: 'LONG' },
-          ];
-        }
+    if (data && !data.error) {
+      const normPair = (raw: string) => {
+        if (!raw) return 'UNKNOWN';
+        const s = String(raw).toUpperCase().trim();
+        if (s === 'XAUUSD' || s === 'GOLD') return 'GOLD';
+        if (s === 'XAGUSD' || s === 'SILVER') return 'SILVER';
+        if (s === 'SPX500USD' || s === 'SPX' || s === 'US500') return 'US500';
+        if (s === 'NAS100USD' || s === 'NDX' || s === 'US100' || s === 'NAS100') return 'NAS100';
+        if (s === 'US30USD' || s === 'DJI' || s === 'US30') return 'US30';
+        if (s === 'DE40EUR' || s === 'DAX' || s === 'GER40') return 'GER40';
+        if (s === 'JP225USD' || s === 'NI225' || s === 'JP225') return 'JP225';
+        return s;
+      };
 
-        // Support both data.metals and data.items (canonical key in worker)
+      // Normalize metals if provided by worker (top 5)
+      if (data.metals || data.items) {
         let existingMetals = data.metals || data.items || [];
-        // Normalize XAUUSD -> GOLD and XAGUSD -> SILVER
-        existingMetals = existingMetals.map((m: any) => {
-          let pair = m.pair || m.p || m.c || m.name;
-          if (pair === 'XAUUSD') pair = 'GOLD';
-          if (pair === 'XAGUSD') pair = 'SILVER';
+        data.metals = existingMetals.map((m: any) => {
+          let pair = normPair(m.pair || m.p || m.c || m.name);
           return { ...m, pair };
-        });
-
-        const metalExtras = [
-          { pair: 'SILVER', pct: -2.01, dir: 'SHORT', price: 31.85, ema20: 32.20 },
-          { pair: 'GOLD', pct: -1.55, dir: 'SHORT', price: 2685.40, ema20: 2695.10 },
-          { pair: 'USOIL', pct: 0.45, dir: 'LONG', price: 71.40, ema20: 70.80 },
-          { pair: 'UKOIL', pct: 0.40, dir: 'LONG', price: 74.90, ema20: 74.20 },
-          { pair: 'COPPER', pct: -0.22, dir: 'SHORT', price: 4.12, ema20: 4.15 },
-          { pair: 'NGAS', pct: -0.65, dir: 'SHORT', price: 2.85, ema20: 2.92 },
-        ];
-
-        metalExtras.forEach((ext) => {
-          if (!existingMetals.some((e: any) => e.pair === ext.pair || (ext.pair === 'GOLD' && e.pair === 'XAUUSD') || (ext.pair === 'SILVER' && e.pair === 'XAGUSD'))) {
-            existingMetals.push(ext);
-          }
-        });
-        data.metals = existingMetals;
-
-        cachedFmLatest = data;
-        lastFetchFmLatest = now;
-        return res.json({ source: 'live_worker', data });
+        }).slice(0, 5);
       }
+
+      // Top 5 crypto
+      if (data.crypto || data.coins) {
+        let existingCrypto = data.crypto || data.coins || [];
+        data.crypto = existingCrypto.map((c: any) => {
+          let pair = normPair(c.pair || c.p || c.c || c.name);
+          return { ...c, pair };
+        }).slice(0, 5);
+      }
+
+      // Top 5 indices
+      if (data.inst || data.indices) {
+        let existingInst = data.inst || data.indices || [];
+        data.inst = existingInst.map((i: any) => {
+          let pair = normPair(i.pair || i.p || i.c || i.name);
+          return { ...i, pair };
+        }).slice(0, 5);
+      }
+
+      // DO NOT fabricate fake data. Keep only authentic lists sent by the webhook/worker.
+      data.forex = Array.isArray(data.forex) ? data.forex : [];
+      data.metals = Array.isArray(data.metals) ? data.metals : [];
+      data.crypto = Array.isArray(data.crypto) ? data.crypto : [];
+      data.inst = Array.isArray(data.inst) ? data.inst : [];
+
+      cachedFmLatest = data;
+      lastFetchFmLatest = now;
+      return res.json({ source: 'live_worker', data });
     }
   } catch (err: any) {
     console.warn('Flow monitor worker fetch warning:', err.message);
   }
 
+  // If a direct webhook was posted to this server, use that
   if (cachedFmLatest) {
-    return res.json({ source: 'fallback_cache', data: cachedFmLatest });
+    return res.json({ source: 'cached_webhook', data: cachedFmLatest });
   }
 
-  const d = new Date();
-  const timeStr = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} | ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')} GMT+7`;
-  const fallbackData = {
-    time: timeStr,
-    mode: 'Scalping',
-    forex: [
-      { pair: 'AUDUSD', pct: -0.24, dir: 'SHORT' },
-      { pair: 'EURAUD', pct: 0.23, dir: 'LONG' },
-      { pair: 'AUDCHF', pct: -0.21, dir: 'SHORT' },
-      { pair: 'GBPAUD', pct: 0.19, dir: 'LONG' },
-      { pair: 'NZDUSD', pct: -0.17, dir: 'SHORT' },
-      { pair: 'AUDCAD', pct: -0.17, dir: 'SHORT' },
-      { pair: 'AUDJPY', pct: -0.17, dir: 'SHORT' },
-      { pair: 'USDJPY', pct: 0.07, dir: 'LONG' },
-    ],
-    metals: [
-      { pair: 'GOLD', pct: -1.55, dir: 'SHORT' },
-      { pair: 'SILVER', pct: -2.01, dir: 'SHORT' },
-      { pair: 'USOIL', pct: 0.45, dir: 'LONG' },
-      { pair: 'UKOIL', pct: 0.40, dir: 'LONG' },
-      { pair: 'COPPER', pct: -0.18, dir: 'SHORT' },
-    ],
-    crypto: [
-      { pair: 'BTC', pct: 0.75, dir: 'LONG' },
-      { pair: 'ETH', pct: -0.29, dir: 'SHORT' },
-      { pair: 'SOL', pct: 0.87, dir: 'LONG' },
-      { pair: 'BNB', pct: 0.42, dir: 'LONG' },
-      { pair: 'XRP', pct: -0.25, dir: 'SHORT' },
-    ],
-    inst: [
-      { pair: 'US500', pct: 0.18, dir: 'LONG' },
-      { pair: 'NAS100', pct: 0.25, dir: 'LONG' },
-      { pair: 'US30', pct: 0.12, dir: 'LONG' },
-      { pair: 'GER40', pct: -0.15, dir: 'SHORT' },
-      { pair: 'JP225', pct: 0.31, dir: 'LONG' },
-    ],
-    context: {
-      US10Y: 0.32,
-      DXY: 0.06,
-      AUDNZD: -0.09,
-      CHFJPY: 0.08,
-      EURGBP: 0.0,
-      USDCAD: 0.07,
-      XAUXAG: 0.34,
-    },
-  };
-
-  cachedFmLatest = fallbackData;
-  lastFetchFmLatest = now;
-  return res.json({ source: 'simulated_fallback', data: fallbackData });
+  // DO NOT fabricate dummy data. Return null data so user UI displays honest empty/offline state.
+  return res.json({
+    source: 'no_data',
+    data: null,
+    message: 'Belum ada data dari Webhook TradingView / Cloudflare Worker. Tidak ada data dummy yang ditampilkan.',
+  });
 });
 
 app.get('/api/flow-monitor/history', async (req, res) => {
@@ -268,15 +198,36 @@ app.post(['/api/flow-monitor/webhook', '/fm'], (req, res) => {
     const now = Date.now();
     let normalizedSnapshot: any = null;
 
-    if (body.forex || body.metals || body.crypto) {
+    const normItem = (item: any) => {
+      let pair = item.pair || item.p || item.c || item.name || 'UNKNOWN';
+      if (pair === 'XAUUSD') pair = 'GOLD';
+      if (pair === 'XAGUSD') pair = 'SILVER';
+      if (pair === 'SPX500USD') pair = 'US500';
+      if (pair === 'NAS100USD') pair = 'NAS100';
+      if (pair === 'US30USD') pair = 'US30';
+      if (pair === 'DE40EUR') pair = 'GER40';
+      if (pair === 'JP225USD') pair = 'JP225';
+      const pct = typeof item.pct === 'number' ? item.pct : typeof item.chg === 'number' ? item.chg : typeof item.r === 'number' ? item.r : 0;
+      const dir = item.dir || (pct >= 0 ? 'LONG' : 'SHORT');
+      return { pair, pct, dir, price: item.price ?? item.c };
+    };
+
+    if (body.forex || body.metals || body.crypto || body.inst) {
+      const existing = cachedFmLatest ? { ...cachedFmLatest } : { forex: [], metals: [], crypto: [], inst: [], context: {} };
+
+      const newMetals = Array.isArray(body.metals) ? body.metals.map(normItem).slice(0, 5) : existing.metals;
+      const newCrypto = Array.isArray(body.crypto) ? body.crypto.map(normItem).slice(0, 5) : existing.crypto;
+      const newInst = Array.isArray(body.inst) ? body.inst.map(normItem).slice(0, 5) : existing.inst;
+      const newForex = Array.isArray(body.forex) ? body.forex.map(normItem) : existing.forex;
+
       normalizedSnapshot = {
         time: body.time || new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
-        mode: body.mode || 'PineScript',
-        forex: Array.isArray(body.forex) ? body.forex : [],
-        metals: Array.isArray(body.metals) ? body.metals : [],
-        crypto: Array.isArray(body.crypto) ? body.crypto : [],
-        inst: Array.isArray(body.inst) ? body.inst : [],
-        context: body.context || {},
+        mode: body.mode || 'PineScript 15 Prime',
+        forex: newForex,
+        metals: newMetals,
+        crypto: newCrypto,
+        inst: newInst,
+        context: { ...(existing.context || {}), ...(body.context || {}) },
         timestamp: now,
       };
     } else if (body.data && Array.isArray(body.data)) {
@@ -288,40 +239,18 @@ app.post(['/api/flow-monitor/webhook', '/fm'], (req, res) => {
         context: {},
       };
 
-      const CRYPTO_SYMS = new Set([
-        'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'SUI', 'LINK',
-        'NEAR', 'APT', 'PEPE', 'LTC', 'DOT', 'RENDER', 'FET', 'INJ', 'SHIB', 'TAO'
-      ]);
-      const METALS_SYMS = new Set([
-        'XAUUSD', 'XAGUSD', 'XPTUSD', 'COPPER', 'USOIL', 'UKOIL', 'NATGAS', 'ALUMINUM', 'WHEAT',
-        'GOLD', 'SILVER', 'NGAS'
-      ]);
-      const INST_SYMS = new Set([
-        'US500', 'US100', 'US30', 'US2000', 'GER40', 'UK100', 'JP225', 'HK33',
-        'SPX', 'NDX', 'DJI', 'DXY', 'US10Y', 'VIX', 'DE40'
-      ]);
+      const CRYPTO_SYMS = new Set(['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA']);
+      const METALS_SYMS = new Set(['XAUUSD', 'XAGUSD', 'USOIL', 'UKOIL', 'NATGAS', 'GOLD', 'SILVER']);
+      const INST_SYMS = new Set(['US500', 'NAS100', 'US100', 'US30', 'GER40', 'JP225']);
 
       body.data.forEach((item: any) => {
-        const pair = item.p || item.pair || item.c || item.name || 'UNKNOWN';
-        const pct = typeof item.chg === 'number' ? item.chg : typeof item.pct === 'number' ? item.pct : typeof item.r === 'number' ? item.r : 0;
-        const dir = item.dir || (pct >= 0 ? 'LONG' : 'SHORT');
-        const entry = {
-          pair,
-          pct,
-          dir,
-          price: item.c,
-          open: item.o,
-          high: item.h,
-          low: item.l,
-          vol: item.v,
-          ema20: item.ema20,
-          src: item.src,
-        };
+        const normed = normItem(item);
+        const pair = normed.pair;
 
         const upsert = (list: any[]) => {
           const idx = list.findIndex((x) => x.pair === pair);
-          if (idx >= 0) list[idx] = entry;
-          else list.push(entry);
+          if (idx >= 0) list[idx] = normed;
+          else list.push(normed);
         };
 
         if (body.cat === 'crypto' || CRYPTO_SYMS.has(pair)) {
@@ -333,48 +262,31 @@ app.post(['/api/flow-monitor/webhook', '/fm'], (req, res) => {
         } else {
           upsert(baseSnapshot.forex);
         }
-
-        if (!baseSnapshot.context) baseSnapshot.context = {};
-        if (pair === 'US10Y')  baseSnapshot.context.US10Y  = pct;
-        if (pair === 'DXY')    baseSnapshot.context.DXY    = pct;
-        if (pair === 'VIX')    baseSnapshot.context.VIX    = pct;
-        if (pair === 'US500')  baseSnapshot.context.US500  = pct;
-        if (pair === 'XAUUSD') baseSnapshot.context.GOLD   = pct;
-        if (pair === 'USOIL')  baseSnapshot.context.USOIL  = pct;
-        if (pair === 'AUDNZD') baseSnapshot.context.AUDNZD = pct;
-        if (pair === 'CHFJPY') baseSnapshot.context.CHFJPY = pct;
-        if (pair === 'EURGBP') baseSnapshot.context.EURGBP = pct;
-        if (pair === 'USDCAD') baseSnapshot.context.USDCAD = pct;
       });
 
       normalizedSnapshot = {
         time: new Date(body.t || now).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
-        mode: body.tf ? `${body.tf}m` : 'PineScript v6',
+        mode: body.tf ? `${body.tf}m` : 'PineScript 15 Prime',
         forex: baseSnapshot.forex,
-        metals: baseSnapshot.metals,
-        crypto: baseSnapshot.crypto,
-        inst: baseSnapshot.inst,
+        metals: (baseSnapshot.metals || []).slice(0, 5),
+        crypto: (baseSnapshot.crypto || []).slice(0, 5),
+        inst: (baseSnapshot.inst || []).slice(0, 5),
         context: baseSnapshot.context,
         timestamp: now,
       };
     } else if (body.pairs || body.items || body.coins || body.inst) {
       const formatEntries = (arr: any[]) => {
         if (!Array.isArray(arr)) return [];
-        return arr.map((item) => {
-          const pair = item.pair || item.p || item.c || item.n;
-          const pct = typeof item.pct === 'number' ? item.pct : typeof item.r === 'number' ? item.r : 0;
-          const dir = item.dir || (pct >= 0 ? 'LONG' : 'SHORT');
-          return { pair, pct, dir, price: item.price };
-        });
+        return arr.map(normItem);
       };
 
       normalizedSnapshot = {
         time: new Date(body.t || now).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
-        mode: 'PineScript',
+        mode: 'PineScript 15 Prime',
         forex: formatEntries(body.pairs),
-        metals: formatEntries(body.items || body.metals),
-        crypto: formatEntries(body.coins || body.crypto),
-        inst: formatEntries(body.inst),
+        metals: formatEntries(body.items || body.metals).slice(0, 5),
+        crypto: formatEntries(body.coins || body.crypto).slice(0, 5),
+        inst: formatEntries(body.inst).slice(0, 5),
         context: body.context || {},
         timestamp: now,
       };

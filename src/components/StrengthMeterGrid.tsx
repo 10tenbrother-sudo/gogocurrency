@@ -1,7 +1,7 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Eye, Check } from 'lucide-react';
 import { CurrencyCode, CurrencyStrengthScore } from '../types/forex';
-import { CURRENCIES, formatScore } from '../services/currencyStrengthEngine';
+import { CURRENCIES, getCurrencyConfig, formatScore } from '../services/currencyStrengthEngine';
 
 interface StrengthMeterGridProps {
   rankings: CurrencyStrengthScore[];
@@ -47,7 +47,7 @@ export const StrengthMeterGrid: React.FC<StrengthMeterGridProps> = ({
       {/* Grid of 8 Currency Meters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
         {rankings.map((item) => {
-          const config = CURRENCIES[item.code];
+          const config = CURRENCIES[item.code] || getCurrencyConfig(item.code);
           const isSelected = selectedCurrencies.has(item.code);
           const isFocused = focusedCurrency === item.code;
           const scorePercent = Math.min(100, Math.max(0, (item.score / 10) * 100));
@@ -95,12 +95,12 @@ export const StrengthMeterGrid: React.FC<StrengthMeterGridProps> = ({
                   <span className="text-[10px] font-mono text-slate-500 font-bold">
                     #{item.rank}
                   </span>
-                  <span className="text-base" title={config.country}>
-                    {config.flag}
+                  <span className="text-base" title={config?.country || ''}>
+                    {config?.flag || '🌐'}
                   </span>
                   <span
                     className="font-bold text-sm tracking-tight"
-                    style={{ color: isSelected ? config.color : '#94a3b8' }}
+                    style={{ color: isSelected ? (config?.color || '#0ea5e9') : '#94a3b8' }}
                   >
                     {item.code}
                   </span>

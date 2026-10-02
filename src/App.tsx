@@ -10,6 +10,7 @@ import {
 import {
   CURRENCIES,
   CURRENCY_CODES,
+  getCurrencyConfig,
   DEFAULT_USD_RATES,
   generateInitialHistory,
   computeRankings,
@@ -29,6 +30,7 @@ import {
   deleteUserAlert,
   updateUserAlertStatus,
   fetchUserAlerts,
+  logoutUser,
 } from './services/firebase';
 import { User } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
@@ -49,16 +51,17 @@ import { MethodologyModal } from './components/MethodologyModal';
 import { AuthModal } from './components/AuthModal';
 import { ScalpIntradaySwingMonitor } from './components/ScalpIntradaySwingMonitor';
 import { FlowMonitorDashboard } from './components/FlowMonitorDashboard';
+import { UnifiedDashboard } from './components/UnifiedDashboard';
 import { Flame, Layers, BarChart2, Clock, TrendingUp, Zap, Compass } from 'lucide-react';
 
-export type TerminalTab = 'chart' | 'scalp_monitor' | 'flow_monitor' | 'top_movement' | 'pairs_28' | 'multi_timeframe' | 'sessions';
+export type TerminalTab = 'flow_monitor' | 'chart' | 'multi_timeframe' | 'sessions';
 
 export default function App() {
   // Global Theme: 'dark' | 'light' saved persistently in localStorage
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('flowmonitor_theme');
     if (saved === 'light' || saved === 'dark') return saved;
-    return 'dark';
+    return 'light';
   });
 
   useEffect(() => {
@@ -82,11 +85,11 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Navigation View: 'landing' by default (natural web flow)
-  const [currentView, setCurrentView] = useState<'terminal' | 'landing'>('landing');
+  // Navigation View: default to 'terminal' (Unified dashboard cockpit directly)
+  const [currentView, setCurrentView] = useState<'terminal' | 'landing'>('terminal');
 
-  // Terminal active tab: default to 'chart' for the authentic currency-strength experience
-  const [activeTab, setActiveTab] = useState<TerminalTab>('chart');
+  // Terminal active tab: default to 'flow_monitor' (All-in-One unified cockpit)
+  const [activeTab, setActiveTab] = useState<TerminalTab>('flow_monitor');
 
   // Firebase Auth State
   const [user, setUser] = useState<User | null>(null);
@@ -199,9 +202,6 @@ export default function App() {
         } catch (err) {
           console.warn('Could not sync user data from cloud:', err);
         }
-      } else {
-        // If user logged out or unauthenticated, redirect from terminal to landing
-        setCurrentView((prev) => (prev === 'terminal' ? 'landing' : prev));
       }
     });
     return () => unsubscribe();
@@ -551,13 +551,53 @@ export default function App() {
     }
   };
 
+  const handleOpenPairTradingViewByName = (pairSymbol: string) => {
+    const clean = (pairSymbol || 'EURUSD').replace('/', '').toUpperCase().trim();
+    const opp = pairOpportunities.find(
+      (p) => p.pair.replace('/', '').toUpperCase() === clean
+    );
+    if (opp) {
+      setSelectedDetailPair(opp);
+    } else {
+      let base = 'USD';
+      let quote = 'USD';
+      if (clean.length === 6) {
+        base = clean.slice(0, 3);
+        quote = clean.slice(3, 6);
+      } else if (clean.endsWith('USDT')) {
+        base = clean.replace('USDT', '') || 'BTC';
+        quote = 'USDT';
+      } else if (clean.endsWith('USD')) {
+        base = clean.replace('USD', '') || 'XAU';
+        quote = 'USD';
+      } else {
+        base = clean;
+        quote = 'USD';
+      }
+
+      setSelectedDetailPair({
+        pair: pairSymbol,
+        base: (base as CurrencyCode) || 'USD',
+        quote: (quote as CurrencyCode) || 'USD',
+        baseScore: 6.0,
+        quoteScore: 4.0,
+        divergence: 2.0,
+        signal: 'BUY',
+        rate: 1.0,
+        change24h: 0.5,
+        spreadPips: 1.0,
+        momentum: 'steady',
+      });
+    }
+  };
+
   // Export data snapshot to CSV
   const handleExportSnapshot = () => {
     if (!latestSnapshot) return;
     let csv = 'Currency,Country,Score,Rank,Delta,Sentiment\n';
     rankings.forEach((r) => {
-      const conf = CURRENCIES[r.code];
-      csv += `${r.code},"${conf.country}",${r.score},${r.rank},${r.delta},"${r.sentiment}"\n`;
+      const conf = CURRENCIES[r.code] || getCurrencyConfig(r.code);
+      csv += `${r.code},"${conf?.country || ''}",${r.score},${r.rank},${r.delta},"${r.sentiment}"\n`;
     });
 
     csv += '\nPair,Base,Quote,BaseScore,QuoteScore,Divergence,Signal,Rate,SpreadPips\n';
@@ -635,377 +675,48 @@ export default function App() {
             theme={theme}
             onToggleTheme={toggleTheme}
           />
-        ) : !user ? (
-        /* Strict Guard: If unauthenticated in terminal view, show Login Gate */
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-md mx-auto space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-white/[0.1] flex items-center justify-center text-slate-700 dark:text-white shadow-sm">
-            <svg className="w-6 h-6 text-slate-500 dark:text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white font-[family-name:var(--font-display)]">
-            Akses Meja Kerja Dibatasi
-          </h2>
-          <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
-            Terminal Trading memerlukan sesi terautentikasi untuk menyinkronkan data real-time dan alarm Anda secara permanen.
-          </p>
-          <div className="flex items-center gap-2.5 pt-2">
-            <button
-              onClick={() => setIsAuthOpen(true)}
-              className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 dark:bg-cyan-500 dark:hover:bg-cyan-400 text-white dark:text-slate-950 font-bold text-xs rounded-xl shadow-sm cursor-pointer transition-all"
-            >
-              Masuk dengan Akun
-            </button>
-            <button
-              onClick={() => setCurrentView('landing')}
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-200 dark:border-white/[0.08] text-slate-700 dark:text-zinc-300 text-xs rounded-xl cursor-pointer transition-colors"
-            >
-              Kembali ke Depan
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* If Authenticated in Terminal View: render dedicated Financial Trader Cockpit Workspace */
-        <>
-          {/* Workspace Trading Cockpit Header */}
-          <Header
-            currentView={currentView}
-            onChangeView={handleChangeView}
-            isLive={isLive}
-            onToggleLive={() => setIsLive(!isLive)}
-            tickIntervalMs={tickIntervalMs}
-            onChangeTickInterval={setTickIntervalMs}
-            soundEnabled={soundEnabled}
-            onToggleSound={() => setSoundEnabled(!soundEnabled)}
-            marketSessions={marketSessions}
-            onOpenMethodology={() => setIsMethodologyOpen(true)}
-            onOpenAlerts={() => setIsAlertsOpen(true)}
-            onExportSnapshot={handleExportSnapshot}
-            unreadAlertCount={alertEvents.length}
-            user={user}
-            onOpenAuth={() => setIsAuthOpen(true)}
-            onManualRefresh={fetchLiveRates}
-            isRefreshing={isRefreshing}
-            lastUpdatedTime={lastSyncTime}
-            rankings={rankings}
-            theme={theme}
-            onToggleTheme={toggleTheme}
-          />
-
-          {/* Main Terminal Workspace Viewport */}
-          <main className="flex-1 max-w-[1700px] w-full mx-auto px-3 lg:px-6 py-4 space-y-4">
-            {/* 1. Currency Standings Ribbon (Klasemen Kekuatan 8 Mata Uang) */}
-            <CurrencyStandingsBar
+        ) : (
+          /* Dedicated Unified Financial Trader Cockpit */
+          <div className="flex-1 w-full">
+            <UnifiedDashboard
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              activeTimeframe={timeframe}
+              onChangeTimeframe={handleTimeframeChange}
+              timeframeHistories={timeframeHistories}
+              usdRates={usdRates}
               rankings={rankings}
+              marketSessions={marketSessions}
+              user={user || ({ email: '10tenbrother@gmail.com', displayName: '10tenbrother', uid: 'user-10tenbrother' } as User)}
+              onOpenAuth={() => setIsAuthOpen(true)}
+              onLogout={async () => {
+                if (user) {
+                  await logoutUser();
+                }
+                setCurrentView('landing');
+              }}
+              onOpenMethodology={() => setIsMethodologyOpen(true)}
+              onOpenAlerts={() => setIsAlertsOpen(true)}
+              onExportSnapshot={handleExportSnapshot}
+              unreadAlertCount={alertEvents.length}
+              activeTab={activeTab}
+              onChangeTab={setActiveTab}
+              currentHistory={currentHistory}
               selectedCurrencies={selectedCurrencies}
               onToggleCurrency={handleToggleCurrency}
               onSoloCurrency={handleSoloCurrency}
               focusedCurrency={focusedCurrency}
-              timeframe={timeframe}
-              theme={theme}
+              onSetFocusedCurrency={setFocusedCurrency}
+              rawWebSeries={rawWebSeries}
+              isRealWebLive={isRealWebLive}
+              onRefreshWebData={syncCurrencyStrengthWebData}
+              isLoadingWebData={isLoadingWebData}
+              lastWebSyncTime={lastWebSyncTime}
+              matrixData={matrixData}
+              onBackToLanding={() => setCurrentView('landing')}
             />
-
-            {/* 2. Modern Segmented View Switcher & Trading Style / Timeframe Selector */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-zinc-200 dark:border-white/[0.07] pb-3 transition-colors duration-200">
-              {/* Left: Tab Views */}
-              <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/[0.08] rounded-xl text-xs font-medium self-start sm:self-auto overflow-x-auto scrollbar-none shadow-2xs">
-                <button
-                  onClick={() => setActiveTab('chart')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                    activeTab === 'chart'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-xs border border-zinc-200 dark:border-white/10'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Grafik Garis (Live)</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('scalp_monitor')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                    activeTab === 'scalp_monitor'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-xs border border-zinc-200 dark:border-white/10'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  <Zap className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Scalp, Intraday & Swing</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('flow_monitor')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap relative ${
-                    activeTab === 'flow_monitor'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-xs border border-zinc-200 dark:border-white/10'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  <Compass className="w-3.5 h-3.5 text-orange-500" />
-                  <span>Flow Monitor (BTC & Komoditas)</span>
-                  <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                    Live
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('top_movement')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                    activeTab === 'top_movement'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-xs border border-zinc-200 dark:border-white/10'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  <Flame className="w-3.5 h-3.5 text-amber-500" />
-                  <span>5 Pair Disparitas</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('pairs_28')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                    activeTab === 'pairs_28'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-xs border border-zinc-200 dark:border-white/10'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5 text-cyan-500" />
-                  <span>Screener 28 Pair</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('multi_timeframe')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                    activeTab === 'multi_timeframe'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-xs border border-zinc-200 dark:border-white/10'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  <BarChart2 className="w-3.5 h-3.5 text-purple-500" />
-                  <span>Multi-Timeframe</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('sessions')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                    activeTab === 'sessions'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-xs border border-zinc-200 dark:border-white/10'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  <Clock className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Sesi Pasar</span>
-                </button>
-              </div>
-
-              {/* Right: Trading Style & Timeframe Mode Selector (Scalp / Intraday / Swing) */}
-              <div className="flex items-center gap-3 self-start lg:self-auto overflow-x-auto scrollbar-none">
-                <TimeframeSelector
-                  activeTimeframe={timeframe}
-                  onChangeTimeframe={handleTimeframeChange}
-                />
-              </div>
-            </div>
-
-            {/* 3. Direct Content View with Silky Smooth Tab Crossfade */}
-            <AnimatePresence mode="wait">
-              {activeTab === 'chart' && (
-                <motion.div
-                  key="chart"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <CurrencyStrengthChart
-                    history={currentHistory}
-                    rankings={rankings}
-                    timeframe={timeframe}
-                    onChangeTimeframe={handleTimeframeChange}
-                    selectedCurrencies={selectedCurrencies}
-                    onToggleCurrency={handleToggleCurrency}
-                    onSoloCurrency={handleSoloCurrency}
-                    focusedCurrency={focusedCurrency}
-                    onSetFocusedCurrency={setFocusedCurrency}
-                    rawWebSeries={rawWebSeries}
-                    isRealWebLive={isRealWebLive}
-                    onRefreshWebData={syncCurrencyStrengthWebData}
-                    isLoadingWebData={isLoadingWebData}
-                    lastWebSyncTime={lastWebSyncTime}
-                    theme={theme}
-                  />
-
-                  {/* Scalp, Intraday & Swing Horizon Monitor Bar */}
-                  <div className="mt-4">
-                    <ScalpIntradaySwingMonitor
-                      activeTimeframe={timeframe}
-                      onChangeTimeframe={handleTimeframeChange}
-                      currentHistory={currentHistory}
-                      rankings={rankings}
-                      onManualRefresh={syncCurrencyStrengthWebData}
-                      theme={theme}
-                    />
-                  </div>
-                </motion.div>
-              )}
-
-              {activeTab === 'scalp_monitor' && (
-                <motion.div
-                  key="scalp_monitor"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                  className="space-y-4"
-                >
-                  <ScalpIntradaySwingMonitor
-                    activeTimeframe={timeframe}
-                    onChangeTimeframe={handleTimeframeChange}
-                    currentHistory={currentHistory}
-                    rankings={rankings}
-                    onManualRefresh={syncCurrencyStrengthWebData}
-                    theme={theme}
-                  />
-
-                  <CurrencyStrengthChart
-                    history={currentHistory}
-                    rankings={rankings}
-                    timeframe={timeframe}
-                    onChangeTimeframe={handleTimeframeChange}
-                    selectedCurrencies={selectedCurrencies}
-                    onToggleCurrency={handleToggleCurrency}
-                    onSoloCurrency={handleSoloCurrency}
-                    focusedCurrency={focusedCurrency}
-                    onSetFocusedCurrency={setFocusedCurrency}
-                    rawWebSeries={rawWebSeries}
-                    isRealWebLive={isRealWebLive}
-                    onRefreshWebData={syncCurrencyStrengthWebData}
-                    isLoadingWebData={isLoadingWebData}
-                    lastWebSyncTime={lastWebSyncTime}
-                    theme={theme}
-                  />
-                </motion.div>
-              )}
-
-              {activeTab === 'flow_monitor' && (
-                <motion.div
-                  key="flow_monitor"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <FlowMonitorDashboard
-                    theme={theme}
-                    onSelectPair={handleSelectFlowPair}
-                    onToggleTheme={toggleTheme}
-                    onLogout={() => setCurrentView('landing')}
-                    activeTimeframe={timeframe}
-                    onChangeTimeframe={handleTimeframeChange}
-                    timeframeHistories={timeframeHistories}
-                    usdRates={usdRates}
-                  />
-                </motion.div>
-              )}
-
-              {activeTab === 'top_movement' && (
-                <motion.div
-                  key="top_movement"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <TopDailyPairs
-                    opportunities={pairOpportunities}
-                    matrixData={matrixData}
-                    onOpenPairDetails={setSelectedDetailPair}
-                    onOpenTradingView={setSelectedDetailPair}
-                    theme={theme}
-                  />
-                </motion.div>
-              )}
-
-              {activeTab === 'pairs_28' && (
-                <motion.div
-                  key="pairs_28"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <PairOpportunities
-                    opportunities={pairOpportunities}
-                    onSelectPairForChart={handleSelectPairForChart}
-                    onOpenPairDetails={setSelectedDetailPair}
-                    onOpenTradingView={setSelectedDetailPair}
-                    theme={theme}
-                  />
-                </motion.div>
-              )}
-
-              {activeTab === 'multi_timeframe' && (
-                <motion.div
-                  key="multi_timeframe"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <MultiTimeframeHeatmap
-                    matrixData={matrixData}
-                    selectedCurrencies={selectedCurrencies}
-                    onToggleCurrency={handleToggleCurrency}
-                    onSoloCurrency={handleSoloCurrency}
-                    theme={theme}
-                  />
-                </motion.div>
-              )}
-
-              {activeTab === 'sessions' && (
-                <motion.div
-                  key="sessions"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <MarketSessions sessions={marketSessions} theme={theme} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </main>
-
-          {/* Terminal Workspace Footer */}
-          <footer className="border-t border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#070a10] py-4 px-4 lg:px-6 text-xs text-slate-500 dark:text-zinc-400 font-mono mt-auto transition-colors">
-            <div className="max-w-[1700px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-800 dark:text-zinc-300 font-semibold font-sans">Currency Strength</span>
-                <span>·</span>
-                <span className="text-slate-500 dark:text-zinc-400">Live Institutional Forex Terminal</span>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setCurrentView('landing')}
-                  className="hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors cursor-pointer"
-                >
-                  ← Halaman Utama
-                </button>
-                <span>·</span>
-                <button
-                  onClick={() => setIsMethodologyOpen(true)}
-                  className="hover:text-slate-900 dark:hover:text-slate-200 transition-colors cursor-pointer"
-                >
-                  Metodologi
-                </button>
-                <span>·</span>
-                <span className="text-slate-400 dark:text-slate-600">Model terkalibrasi currency-strength.com</span>
-              </div>
-            </div>
-          </footer>
-        </>
-      )}
+          </div>
+        )}
       </div>
 
       {/* Alerts Drawer */}

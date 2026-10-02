@@ -15,7 +15,7 @@ import {
   Wifi,
   Sparkles,
 } from 'lucide-react';
-import { CURRENCIES, CURRENCY_CODES } from '../services/currencyStrengthEngine';
+import { CURRENCIES, CURRENCY_CODES, getCurrencyConfig } from '../services/currencyStrengthEngine';
 
 interface TerminalLaunchScreenProps {
   onComplete: () => void;
@@ -513,7 +513,7 @@ export const TerminalLaunchScreen: React.FC<TerminalLaunchScreenProps> = ({
 
           <div className="grid grid-cols-8 gap-1.5 pt-0.5">
             {CURRENCY_CODES.map((code, idx) => {
-              const conf = CURRENCIES[code];
+              const conf = CURRENCIES[code] || getCurrencyConfig(code);
               const isPulsing = activeCurrencyIndex === idx;
 
               return (
@@ -529,7 +529,7 @@ export const TerminalLaunchScreen: React.FC<TerminalLaunchScreenProps> = ({
                       : 'bg-white border-slate-200 text-slate-700 shadow-2xs'
                   }`}
                 >
-                  <div className="text-xs">{conf.flag}</div>
+                  <div className="text-xs">{conf?.flag || '🌐'}</div>
                   <div className="text-[10px] font-mono font-bold mt-0.5">{code}</div>
                 </div>
               );

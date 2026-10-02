@@ -14,10 +14,31 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     <script>
+      // Global error shield for third-party embeds and cross-origin scripts
+      window.addEventListener('error', function(event) {
+        if (!event) return;
+        var msg = event.message || '';
+        if (msg === 'Script error.' || msg.indexOf('Script error') !== -1 || (event.filename && event.filename.indexOf('tradingview') !== -1)) {
+          if (event.preventDefault) event.preventDefault();
+          if (event.stopPropagation) event.stopPropagation();
+          return true;
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', function(event) {
+        if (!event) return;
+        var reason = event.reason || '';
+        var msg = (reason && reason.message) ? reason.message : String(reason);
+        if (msg.indexOf('Script error') !== -1 || msg.indexOf('tradingview') !== -1) {
+          if (event.preventDefault) event.preventDefault();
+          if (event.stopPropagation) event.stopPropagation();
+        }
+      });
+
+      // Persistent theme initializer
       (function() {
         try {
           var saved = localStorage.getItem('flowmonitor_theme');
-          var isDark = saved !== 'light';
+          var isDark = saved === 'dark';
           if (isDark) {
             document.documentElement.classList.add('dark');
             document.documentElement.classList.remove('light');
@@ -34,4 +55,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

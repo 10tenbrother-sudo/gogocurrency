@@ -4,7 +4,7 @@ import {
   MarketSession,
   CurrencyCode,
 } from '../types/forex';
-import { CURRENCIES, formatScore } from '../services/currencyStrengthEngine';
+import { CURRENCIES, getCurrencyConfig, formatScore } from '../services/currencyStrengthEngine';
 import {
   Activity,
   ArrowRight,
@@ -256,7 +256,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               {/* 8 Currency Cards Ribbon */}
               <div className="grid grid-flow-col auto-cols-[105px] sm:auto-cols-auto sm:grid-flow-row sm:grid-cols-4 lg:grid-cols-8 gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none snap-x">
                 {rankings.map((item) => {
-                  const conf = CURRENCIES[item.code];
+                  const conf = CURRENCIES[item.code] || getCurrencyConfig(item.code);
                   return (
                     <div
                       key={item.code}
@@ -264,7 +264,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       className={`border p-3 rounded-xl flex flex-col justify-between cursor-pointer transition-all snap-start min-w-[105px] sm:min-w-0 ${t.subCardBg} ${t.subCardHover}`}
                     >
                       <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="text-base">{conf.flag}</span>
+                        <span className="text-base">{conf?.flag || '🌐'}</span>
                         <span className="font-mono text-[10px] text-zinc-500 font-semibold">
                           #{item.rank}
                         </span>

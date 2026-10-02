@@ -10,18 +10,54 @@
 
 :root {
   color-scheme: light dark;
+  --bg: #0c1015;
+  --panel: #131920;
+  --panel2: #192129;
+  --line: #27313b;
+  --text: #ecf1f5;
+  --muted: #8f9daa;
+  --mint: #82e6be;
+  --red: #f18f9a;
+  --buybg: #203b33;
+  --sellbg: #3a272e;
 }
 
 html.dark, [data-theme="dark"] {
   color-scheme: dark;
-  background-color: #090C13;
-  color: #F4F4F6;
+  --bg: #0c1015;
+  --panel: #131920;
+  --panel2: #192129;
+  --line: #27313b;
+  --text: #ecf1f5;
+  --muted: #8f9daa;
+  --mint: #82e6be;
+  --red: #f18f9a;
+  --buybg: #203b33;
+  --sellbg: #3a272e;
+  background-color: var(--bg);
+  color: var(--text);
 }
 
 html.light, [data-theme="light"] {
   color-scheme: light;
-  background-color: #F8FAFC;
-  color: #0F172A;
+  --bg: #f1f4f6;
+  --panel: #ffffff;
+  --panel2: #eaf0f3;
+  --line: #dbe3e8;
+  --text: #17252e;
+  --muted: #607380;
+  --mint: #137854;
+  --red: #c34b61;
+  --buybg: #e2f4ec;
+  --sellbg: #fae9ed;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+[data-density="compact"] .rowbutton {
+  min-height: 62px !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
 }
 
 body {

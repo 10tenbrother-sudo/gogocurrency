@@ -350,7 +350,7 @@ export const GlobalSentimentHeader: React.FC<GlobalSentimentHeaderProps> = ({
                   <span>Penggerak Utama Pasar:</span>
                 </span>
                 <span className="font-mono font-bold text-slate-900 dark:text-white flex items-center gap-1">
-                  <span>{CURRENCIES[sentiment.dominantDriver.code]?.flag}</span>
+                  <span>{CURRENCIES[sentiment.dominantDriver.code]?.flag || '🌐'}</span>
                   <span>{sentiment.dominantDriver.code}</span>
                   <span className="text-emerald-500 dark:text-emerald-400">
                     ({formatScore(sentiment.dominantDriver.score)})

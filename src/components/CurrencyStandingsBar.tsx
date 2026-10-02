@@ -1,6 +1,6 @@
 import React from 'react';
 import { CurrencyCode, CurrencyStrengthScore, TimeframeKey } from '../types/forex';
-import { CURRENCIES, formatScore, TIMEFRAME_CONFIGS } from '../services/currencyStrengthEngine';
+import { CURRENCIES, getCurrencyConfig, formatScore, TIMEFRAME_CONFIGS } from '../services/currencyStrengthEngine';
 
 interface CurrencyStandingsBarProps {
   rankings: CurrencyStrengthScore[];
@@ -75,7 +75,7 @@ export const CurrencyStandingsBar: React.FC<CurrencyStandingsBarProps> = ({
       {/* 8 Currencies Ribbon: Responsive & Unified Across All Devices */}
       <div className="grid grid-flow-col auto-cols-[110px] sm:auto-cols-auto sm:grid-flow-row sm:grid-cols-4 lg:grid-cols-8 gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none snap-x">
         {rankings.map((item) => {
-          const conf = CURRENCIES[item.code];
+          const conf = getCurrencyConfig(item.code);
           const isSelected = selectedCurrencies.has(item.code);
           const isFocused = focusedCurrency === item.code;
           const isStrong = item.score >= 6.5;
@@ -114,7 +114,7 @@ export const CurrencyStandingsBar: React.FC<CurrencyStandingsBarProps> = ({
                   <span className="text-[10px] font-mono text-zinc-500 font-bold">
                     #{item.rank}
                   </span>
-                  <span className="text-xs opacity-90">{conf.flag}</span>
+                  <span className="text-xs opacity-90">{conf?.flag || '🌐'}</span>
                   <span className={`font-semibold text-xs tracking-tight ${isDark ? 'text-white' : 'text-zinc-900'}`}>
                     {item.code}
                   </span>
